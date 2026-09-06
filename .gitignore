@@ -1,0 +1,9 @@
+# .gitignore
+node_modules/
+dist-server/
+web/node_modules/
+web/dist/
+web/dist-ssr/
+playwright-report/
+test-results/
+*.log
