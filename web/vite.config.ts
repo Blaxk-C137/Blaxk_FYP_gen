@@ -9,5 +9,5 @@ export default defineConfig({
   server: {
     proxy: { '/api': 'http://127.0.0.1:5199' }, // dev: forward API to a local bootServer
   },
-  test: { environment: 'jsdom' },
+  test: { environment: 'jsdom', globals: true },
 })

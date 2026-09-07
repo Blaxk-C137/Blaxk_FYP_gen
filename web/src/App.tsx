@@ -1,3 +1,15 @@
+import { Onboarding } from './screens/Onboarding'
+import { useSettings } from './state/store'
+
 export default function App() {
-  return <main className="container"><h1>fypgen</h1></main>
+  const settings = useSettings()
+  return (
+    <main className="container">
+      {settings.apiKey ? (
+        <h1>fypgen — project workspace (next screens land in Tasks 11–13)</h1>
+      ) : (
+        <Onboarding onDone={() => {}} />
+      )}
+    </main>
+  )
 }
