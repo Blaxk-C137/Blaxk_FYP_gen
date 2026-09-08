@@ -9,6 +9,14 @@ import { useSettings, useProject } from './state/store'
 
 type Screen = 'onboarding' | 'setup' | 'outline' | 'generate' | 'review' | 'export'
 
+const STEPS: { id: Screen; label: string }[] = [
+  { id: 'setup', label: 'Project' },
+  { id: 'outline', label: 'Outline' },
+  { id: 'generate', label: 'Chapters' },
+  { id: 'review', label: 'Review' },
+  { id: 'export', label: 'Export' },
+]
+
 export default function App() {
   const settings = useSettings()
   const project = useProject()
@@ -16,13 +24,20 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(initial)
 
   return (
-    <main className="container">
+    <>
       {settings.apiKey && screen !== 'onboarding' && (
-        <nav className="steps" aria-label="Progress">
-          {(['setup', 'outline', 'generate', 'review', 'export'] as Screen[]).map((s, i) => (
-            <span key={s} className={screen === s ? 'step active' : 'step'}>{i + 1}. {s}</span>
-          ))}
-        </nav>
+        <header className="topbar">
+          <span className="brand">
+            fyp<span>gen</span>
+          </span>
+          <nav className="steps" aria-label="Progress">
+            {STEPS.map((s, i) => (
+              <span key={s.id} className={screen === s.id ? 'step current' : 'step'}>
+                {i + 1}. {s.label}
+              </span>
+            ))}
+          </nav>
+        </header>
       )}
       {screen === 'onboarding' && <Onboarding onDone={() => setScreen('setup')} />}
       {screen === 'setup' && <ProjectSetup onNext={() => setScreen('outline')} />}
@@ -30,6 +45,6 @@ export default function App() {
       {screen === 'generate' && <Generate onNextScreen={() => setScreen('review')} />}
       {screen === 'review' && <Review onNext={() => setScreen('export')} />}
       {screen === 'export' && <Export />}
-    </main>
+    </>
   )
 }

@@ -32,7 +32,7 @@ test('topic → outline → chapter → docx download', async ({ page }) => {
   await page.getByRole('button', { name: 'Generate', exact: true }).first().click()
   await expect(page.getByText(/Done/).first()).toBeVisible({ timeout: 10_000 })
   // Review + export
-  await page.getByRole('button', { name: /review →/i }).click()
+  await page.getByRole('button', { name: /review your project/i }).click()
   await page.getByRole('button', { name: /continue to export/i }).click()
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: /download docx/i }).click()

@@ -20,27 +20,44 @@ export function ProjectSetup({ onNext }: { onNext: () => void }) {
   return (
     <main className="container">
       <h1>Your project</h1>
-      {FIELDS.map(([key, label, placeholder, required]) => (
-        <div key={key} style={{ marginBottom: '0.75rem' }}>
-          <label htmlFor={key}>{label}{required ? ' *' : ''}</label>
-          <input
-            id={key}
-            value={project[key]}
-            placeholder={placeholder}
-            style={{ width: '100%' }}
-            onChange={(e) => setProject({ [key]: e.target.value })}
-          />
-        </div>
-      ))}
-      {touched && !project.topic && <p role="alert" className="error">Please enter a topic first.</p>}
-      <button
-        onClick={() => {
+      <p className="lede">
+        These details go on your title page and shape how the AI writes — fill them in carefully.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
           if (!project.topic) return setTouched(true)
           onNext()
         }}
       >
-        Continue
-      </button>
+        {FIELDS.map(([key, label, placeholder, required]) => (
+          <div key={key} className="field">
+            <label htmlFor={key}>
+              {label}
+              {required ? ' *' : ''}
+            </label>
+            <input
+              id={key}
+              value={project[key]}
+              placeholder={placeholder}
+              onChange={(e) => setProject({ [key]: e.target.value })}
+            />
+            {key === 'topic' && (
+              <p className="hint">One clear sentence — what you built or studied, and for what.</p>
+            )}
+          </div>
+        ))}
+        {touched && !project.topic && (
+          <p role="alert" className="error" style={{ marginTop: 0 }}>
+            Enter a topic first — everything else builds on it.
+          </p>
+        )}
+        <div className="actions-row">
+          <button className="primary" type="submit">
+            Continue
+          </button>
+        </div>
+      </form>
     </main>
   )
 }

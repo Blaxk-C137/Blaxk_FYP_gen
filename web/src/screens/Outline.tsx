@@ -4,6 +4,9 @@ import { generateStream } from '../api'
 import { systemPrompt, outlinePrompt } from '../prompts'
 import { parseOutline } from '../ai/parseOutline'
 
+const WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
+const toWord = (n: number) => WORDS[n - 1] ?? String(n)
+
 export function Outline({ onNext }: { onNext: () => void }) {
   const project = useAppStore((s) => s.project)
   const chapters = useAppStore((s) => s.chapters)
@@ -33,34 +36,56 @@ export function Outline({ onNext }: { onNext: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (state === 'generating') return <main className="container"><p>Drafting your outline…</p></main>
+  if (state === 'generating')
+    return (
+      <main className="container">
+        <h1>Outline</h1>
+        <div className="generating">
+          <p className="pulse">Drafting your outline</p>
+          <p>This usually takes under a minute.</p>
+        </div>
+      </main>
+    )
   if (state === 'error')
     return (
       <main className="container">
-        <p role="alert" className="error">{error}</p>
-        <button onClick={() => void generate()}>Try again</button>
+        <h1>Outline</h1>
+        <p role="alert" className="error">
+          {error}
+        </p>
+        <div className="actions-row">
+          <button className="primary" onClick={() => void generate()}>
+            Try again
+          </button>
+        </div>
       </main>
     )
 
   return (
     <main className="container">
       <h1>Outline</h1>
-      <p className="note">This decides your project's quality — edit freely before generating chapters.</p>
+      <p className="lede">
+        This decides your project's quality. Edit any heading, drop weak sections, add what your
+        department expects — before generating chapters.
+      </p>
       {chapters.map((ch) => (
-        <section key={ch.number} style={{ marginBottom: '1.5rem' }}>
-          <h2>
-            <input
-              aria-label={`Chapter ${ch.number} title`}
-              value={ch.title}
-              onChange={(e) => updateChapter(ch.number, { title: e.target.value.toUpperCase() })}
-              style={{ fontSize: '1.1rem', fontWeight: 700, width: '100%' }}
-            />
-          </h2>
+        <section key={ch.number} className="chapter">
+          <div className="chapter-head">
+            <span className="chapter-title">CHAPTER {toWord(ch.number)}</span>
+            <span className="chapter-meta">{ch.sections.length} sections</span>
+          </div>
+          <input
+            className="input-bare"
+            aria-label={`Chapter ${ch.number} title`}
+            value={ch.title}
+            onChange={(e) => updateChapter(ch.number, { title: e.target.value.toUpperCase() })}
+          />
           {ch.sections.map((s, i) => (
-            <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <div key={i} className="section-row">
               <input
                 aria-label={`Chapter ${ch.number} section ${i + 1} heading`}
                 value={s.heading}
+                placeholder="Section heading"
                 onChange={(e) => {
                   const sections = ch.sections.map((sec, j) =>
                     j === i ? { ...sec, heading: e.target.value } : sec
@@ -69,7 +94,9 @@ export function Outline({ onNext }: { onNext: () => void }) {
                 }}
               />
               <button
+                className="remove-btn"
                 aria-label={`Remove chapter ${ch.number} section ${i + 1}`}
+                title="Remove section"
                 onClick={() =>
                   updateChapter(ch.number, { sections: ch.sections.filter((_, j) => j !== i) })
                 }
@@ -79,6 +106,7 @@ export function Outline({ onNext }: { onNext: () => void }) {
             </div>
           ))}
           <button
+            className="ghost"
             onClick={() =>
               updateChapter(ch.number, {
                 sections: [...ch.sections, { heading: 'New section', description: '' }],
@@ -92,11 +120,17 @@ export function Outline({ onNext }: { onNext: () => void }) {
       {abstract && (
         <details>
           <summary>Draft abstract</summary>
-          <p>{abstract}</p>
+          <p className="note">{abstract}</p>
         </details>
       )}
-      <button onClick={() => void generate()}>Regenerate outline</button>{' '}
-      <button onClick={onNext}>Approve outline → Generate chapters</button>
+      <div className="actions-row">
+        <button className="primary" onClick={onNext}>
+          Approve outline & generate chapters
+        </button>
+        <button className="secondary" onClick={() => void generate()}>
+          Regenerate outline
+        </button>
+      </div>
     </main>
   )
 }

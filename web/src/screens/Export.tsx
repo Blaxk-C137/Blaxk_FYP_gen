@@ -55,21 +55,45 @@ export function Export() {
   return (
     <main className="container">
       <h1>Export</h1>
-      <p className="note">{done} of {chapters.length} chapters have content.</p>
-      <button disabled={done === 0 || busy !== ''} onClick={() => void docx()}>
-        {busy === 'docx' ? 'Building…' : 'Download DOCX'}
-      </button>{' '}
-      <button disabled={done === 0 || busy !== ''} onClick={() => void pptx()}>
-        {busy === 'pptx' ? 'Generating slides…' : 'Download Defense Slides (PPTX)'}
-      </button>
+      <p className="lede">
+        {done} of {chapters.length} chapters have content. Verify every reference before you
+        submit — they are AI-generated.
+      </p>
+      <div className="export-actions">
+        <div className="download-card">
+          <span className="fmt">Word document</span>
+          <span className="desc">
+            Full report — title page, abstract, all chapters, references. Times New Roman 12,
+            double-spaced, justified.
+          </span>
+          <button className="primary" disabled={done === 0 || busy !== ''} onClick={() => void docx()}>
+            {busy === 'docx' ? 'Building…' : 'Download DOCX'}
+          </button>
+        </div>
+        <div className="download-card">
+          <span className="fmt">Defense slides</span>
+          <span className="desc">
+            PowerPoint deck for your defense, with a Q&A prep appendix generated from your project.
+          </span>
+          <button className="secondary" disabled={done === 0 || busy !== ''} onClick={() => void pptx()}>
+            {busy === 'pptx' ? 'Generating slides…' : 'Download PPTX'}
+          </button>
+        </div>
+      </div>
       {error && <p role="alert" className="error">{error}</p>}
       {defenseQa && (
-        <details style={{ marginTop: '1.5rem' }}>
-          <summary>Defense Q&A prep</summary>
-          <pre style={{ whiteSpace: 'pre-wrap' }}>{defenseQa}</pre>
+        <details>
+          <summary>Defense Q&amp;A prep</summary>
+          <pre className="qa">{defenseQa}</pre>
         </details>
       )}
-      <p className="note">Start a new project: <button className="link" onClick={() => useAppStore.getState().reset()}>reset</button></p>
+      <p className="note" style={{ marginTop: '2.5rem' }}>
+        Starting a new project?{' '}
+        <button className="link" onClick={() => useAppStore.getState().reset()}>
+          Reset everything
+        </button>{' '}
+        — your API key stays.
+      </p>
     </main>
   )
 }

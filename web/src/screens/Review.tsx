@@ -1,5 +1,8 @@
 import { useChapters, useAppStore } from '../state/store'
 
+const WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
+const toWord = (n: number) => WORDS[n - 1] ?? String(n)
+
 const words = (t: string) => (t ? t.trim().split(/\s+/).length : 0)
 
 export function Review({ onNext }: { onNext: () => void }) {
@@ -10,20 +13,30 @@ export function Review({ onNext }: { onNext: () => void }) {
   return (
     <main className="container">
       <h1>Review your project</h1>
-      <p className="note">Total: {total} words · edit any chapter inline — changes save automatically.</p>
+      <p className="lede">
+        Total: {total} words · edit any chapter inline — changes save automatically as you type.
+      </p>
       {chapters.map((ch) => (
-        <section key={ch.number} style={{ marginTop: '1.5rem' }}>
-          <h2>CHAPTER {ch.number} — {ch.title} <small>({words(ch.text)} words)</small></h2>
+        <section key={ch.number} className="chapter">
+          <div className="chapter-head">
+            <span className="chapter-title">
+              CHAPTER {toWord(ch.number)} — {ch.title}
+            </span>
+            <span className="chapter-meta">{words(ch.text)} words</span>
+          </div>
           <textarea
             aria-label={`Chapter ${ch.number} text`}
             value={ch.text}
             rows={16}
-            style={{ width: '100%' }}
             onChange={(e) => updateChapter(ch.number, { text: e.target.value })}
           />
         </section>
       ))}
-      <button disabled={total === 0} onClick={onNext}>Continue to export →</button>
+      <div className="actions-row">
+        <button className="primary" disabled={total === 0} onClick={onNext}>
+          Continue to export
+        </button>
+      </div>
     </main>
   )
 }
