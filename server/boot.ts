@@ -14,8 +14,11 @@ export async function bootServer(opts: BootOptions) {
   const app = createApp({ webRoot: opts.webRoot })
   opts.routes?.(app)
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
-  // listen() is async: wait for it, and report the actual bound port (port 0 = ephemeral)
-  await new Promise<void>((resolve) => server.once('listening', resolve))
+  // listen() is async: resolve on listening (port 0 = ephemeral), reject on error (e.g. EADDRINUSE)
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', resolve)
+    server.once('error', reject)
+  })
   const addr = server.address()
   const actualPort = typeof addr === 'object' && addr !== null ? addr.port : port
   return {

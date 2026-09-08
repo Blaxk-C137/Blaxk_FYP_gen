@@ -33,8 +33,8 @@ explicitly before starting:
 ## Development
 
     npm install
-    npm run dev:api   # terminal 1 — local API server on :5199 (no browser)
-    npm run dev       # terminal 2 — vite dev server with HMR, proxies /api to :5199
+    npm run dev:api   # terminal 1 — local API server on :3000 (no browser)
+    npm run dev       # terminal 2 — vite dev server with HMR, proxies /api to :3000
     npm test          # server + shared unit tests
     cd web && npm test   # web unit tests
     npm run build && npx playwright test   # E2E with mock provider

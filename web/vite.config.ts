@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@shared': path.resolve(__dirname, '../shared') } },
   server: {
-    proxy: { '/api': 'http://127.0.0.1:5199' }, // dev: forward API to a local bootServer
+    proxy: { '/api': 'http://127.0.0.1:3000' }, // dev: forward API to a local bootServer
   },
   test: { environment: 'jsdom', globals: true },
 })

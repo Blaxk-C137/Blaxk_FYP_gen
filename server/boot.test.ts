@@ -14,4 +14,12 @@ describe('bootServer', () => {
     expect(await res.json()).toEqual({ ok: true })
     await close()
   })
+
+  it('rejects when the requested port is already taken', async () => {
+    const webRoot = mkdtempSync(join(tmpdir(), 'fypgen-web-'))
+    writeFileSync(join(webRoot, 'index.html'), '<html>fypgen</html>')
+    const first = await bootServer({ webRoot, port: 0 })
+    await expect(bootServer({ webRoot, port: first.port })).rejects.toThrow(/EADDRINUSE/)
+    await first.close()
+  })
 })
