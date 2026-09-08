@@ -9,7 +9,7 @@ export function useChapterGeneration() {
 
   const generate = useCallback(
     async (number: number, nudge?: string, continuation?: string) => {
-      const { settings, project, chapters, updateChapter, appendChapterText } = useAppStore.getState()
+      const { settings, project, chapters, updateChapter } = useAppStore.getState()
       const chapter = chapters.find((c) => c.number === number)
       if (!chapter) return
       updateChapter(number, { status: 'streaming', ...(continuation ? {} : { text: '' }) })

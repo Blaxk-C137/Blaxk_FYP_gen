@@ -13,7 +13,7 @@ describe('store', () => {
   })
 
   it('setOutline replaces chapters and abstract', () => {
-    const ch = [{ number: 1, title: 'INTRODUCTION', sections: [{ heading: 'Background', description: 'd' }], status: 'pending', text: '' }]
+    const ch = [{ number: 1, title: 'INTRODUCTION', sections: [{ heading: 'Background', description: 'd' }], status: 'pending' as const, text: '' }]
     useAppStore.getState().setOutline(ch, 'An abstract')
     expect(useAppStore.getState().chapters).toHaveLength(1)
     expect(useAppStore.getState().abstract).toBe('An abstract')
