@@ -20,6 +20,7 @@
     "build:web": "npm --prefix web run build",
     "build": "npm run build:web && npm run build:server",
     "dev": "npm --prefix web run dev",
+    "dev:api": "npm run build:server && PORT=5199 FYPGEN_NO_OPEN=1 node bin/fypgen.js",
     "start": "node bin/fypgen.js",
     "e2e": "playwright test"
   },

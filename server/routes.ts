@@ -20,8 +20,16 @@ export function registerAIRoutes(app: Hono) {
     }
     if (!body.apiKey) return c.json({ ok: false, error: 'Missing API key' }, 400)
     const provider = REGISTRY[body.provider as ProviderId]
-    const result = await provider.testKey(body.apiKey)
-    return c.json(result, result.ok ? 200 : 401)
+    try {
+      const result = await provider.testKey(body.apiKey)
+      return c.json(result, result.ok ? 200 : 401)
+    } catch {
+      // Network-level failure (offline, DNS, firewall) — not a key problem.
+      return c.json(
+        { ok: false, error: `Could not reach ${provider.id}. Check your internet connection and try again.` },
+        502
+      )
+    }
   })
 
   app.post('/api/generate', async (c) => {
@@ -51,7 +59,13 @@ export function registerAIRoutes(app: Hono) {
         }
       })
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : 'Generation failed' }, 502)
+      const message =
+        err instanceof TypeError
+          ? `Could not reach ${provider.id}. Check your internet connection and try again.`
+          : err instanceof Error
+            ? err.message
+            : 'Generation failed'
+      return c.json({ error: message }, 502)
     }
   })
 }

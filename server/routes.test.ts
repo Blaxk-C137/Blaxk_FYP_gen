@@ -59,4 +59,19 @@ describe('AI routes', () => {
     expect(res.status).toBe(502)
     expect((await res.json()).error).toBe('quota exceeded')
   })
+
+  it('network failure during test-key becomes 502 with a connection hint, not a 500', async () => {
+    vi.spyOn(gemini, 'testKey').mockImplementationOnce(() => {
+      throw new TypeError('fetch failed')
+    })
+    const res = await app().request('/api/test-key', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'gemini', apiKey: 'k' }),
+    })
+    expect(res.status).toBe(502)
+    const body = (await res.json()) as { ok: boolean; error: string }
+    expect(body.ok).toBe(false)
+    expect(body.error).toMatch(/internet connection/i)
+  })
 })
