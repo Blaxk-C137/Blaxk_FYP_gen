@@ -43,4 +43,11 @@ describe('gemini adapter', () => {
     fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     expect((await gemini.testKey('good')).ok).toBe(true)
   })
+
+  it('testKey fetch carries a timeout signal so it cannot hang forever', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    await gemini.testKey('k')
+    const [, init] = fetchMock.mock.calls.at(-1) as [string, { signal?: AbortSignal }]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
 })

@@ -2,7 +2,9 @@
 
 **Date:** 2026-09-08
 **Severity:** High — blocks onboarding for affected users; message misleads troubleshooting
-**Status:** Open
+**Status:** Fixed (2026-09-08) — see `server/net.ts` (cause classification + proxy support),
+`server/routes.ts` (surfaced hints + server-side cause logging), provider adapters (20 s
+`AbortSignal.timeout` on `testKey`).
 
 ## Summary
 

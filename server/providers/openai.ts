@@ -11,6 +11,7 @@ export const openai: AIProvider = {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model: this.defaultModel, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      signal: AbortSignal.timeout(20_000),
     })
     if (res.ok) return { ok: true }
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }

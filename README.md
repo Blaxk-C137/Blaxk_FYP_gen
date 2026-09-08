@@ -24,6 +24,12 @@ browser (localStorage) and sent only to the server running on your own machine.
 ## Important
 References are AI-generated. **Verify every reference before submission.**
 
+**Behind a proxy or VPN?** Node (which fypgen uses) does not read your system
+proxy settings. If key testing fails with a connection error, set the proxy
+explicitly before starting:
+
+    HTTPS_PROXY=http://your-proxy:port npx fypgen
+
 ## Development
 
     npm install

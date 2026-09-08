@@ -15,6 +15,7 @@ export const anthropic: AIProvider = {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({ model: this.defaultModel, max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }),
+      signal: AbortSignal.timeout(20_000),
     })
     if (res.ok) return { ok: true }
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }

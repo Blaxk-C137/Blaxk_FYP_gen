@@ -74,4 +74,54 @@ describe('AI routes', () => {
     expect(body.ok).toBe(false)
     expect(body.error).toMatch(/internet connection/i)
   })
+
+  it('test-key surfaces the underlying DNS cause, not just a generic hint', async () => {
+    const e = new TypeError('fetch failed') as TypeError & { cause?: { code: string; message: string } }
+    e.cause = { code: 'ENOTFOUND', message: 'getaddrinfo ENOTFOUND generativelanguage.googleapis.com' }
+    vi.spyOn(gemini, 'testKey').mockImplementationOnce(() => {
+      throw e
+    })
+    const res = await app().request('/api/test-key', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'gemini', apiKey: 'k' }),
+    })
+    expect(res.status).toBe(502)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toMatch(/DNS/)
+    expect(body.error).toContain('ENOTFOUND')
+  })
+
+  it('test-key hints at antivirus/firewall interception on certificate failures', async () => {
+    const e = new TypeError('fetch failed') as TypeError & { cause?: { code: string; message: string } }
+    e.cause = { code: 'SELF_SIGNED_CERT_IN_CHAIN', message: 'self-signed certificate in certificate chain' }
+    vi.spyOn(gemini, 'testKey').mockImplementationOnce(() => {
+      throw e
+    })
+    const res = await app().request('/api/test-key', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'gemini', apiKey: 'k' }),
+    })
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toMatch(/certificate/)
+    expect(body.error).toContain('SELF_SIGNED_CERT_IN_CHAIN')
+  })
+
+  it('generate surfaces the classified network cause on stream failure', async () => {
+    const e = new TypeError('fetch failed') as TypeError & { cause?: { code: string; message: string } }
+    e.cause = { code: 'UND_ERR_CONNECT_TIMEOUT', message: 'Connect Timeout' }
+    vi.spyOn(gemini, 'stream').mockImplementationOnce(async function* () {
+      throw e
+    })
+    const res = await app().request('/api/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'gemini', apiKey: 'k', system: 's', prompt: 'p' }),
+    })
+    expect(res.status).toBe(502)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toMatch(/proxy|VPN/i)
+    expect(body.error).toContain('UND_ERR_CONNECT_TIMEOUT')
+  })
 })

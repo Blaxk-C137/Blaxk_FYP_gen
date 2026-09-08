@@ -3,6 +3,7 @@ import { stream } from 'hono/streaming'
 import { REGISTRY } from './providers/registry.js'
 import { PROVIDERS } from '../shared/constants.js'
 import type { ProviderId } from '../shared/constants.js'
+import { configureNetworking, describeNetworkError, hasNetworkCause, logNetworkError } from './net.js'
 
 interface GenerateBody {
   provider?: string
@@ -12,7 +13,15 @@ interface GenerateBody {
   prompt?: string
 }
 
+/** `Could not reach gemini: <classified hint> (CODE: message)` */
+function networkError(providerId: string, err: unknown): string {
+  const { hint, detail } = describeNetworkError(err)
+  return `Could not reach ${providerId}: ${hint}${detail}`
+}
+
 export function registerAIRoutes(app: Hono) {
+  configureNetworking()
+
   app.post('/api/test-key', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as GenerateBody
     if (!body.provider || !PROVIDERS.includes(body.provider as never)) {
@@ -23,12 +32,10 @@ export function registerAIRoutes(app: Hono) {
     try {
       const result = await provider.testKey(body.apiKey)
       return c.json(result, result.ok ? 200 : 401)
-    } catch {
-      // Network-level failure (offline, DNS, firewall) — not a key problem.
-      return c.json(
-        { ok: false, error: `Could not reach ${provider.id}. Check your internet connection and try again.` },
-        502
-      )
+    } catch (err) {
+      // Network-level failure (offline, DNS, proxy, firewall) — not a key problem.
+      logNetworkError('/api/test-key', provider.id, err)
+      return c.json({ ok: false, error: networkError(provider.id, err) }, 502)
     }
   })
 
@@ -59,12 +66,12 @@ export function registerAIRoutes(app: Hono) {
         }
       })
     } catch (err) {
-      const message =
-        err instanceof TypeError
-          ? `Could not reach ${provider.id}. Check your internet connection and try again.`
-          : err instanceof Error
-            ? err.message
-            : 'Generation failed'
+      logNetworkError('/api/generate', provider.id, err)
+      const message = hasNetworkCause(err)
+        ? networkError(provider.id, err)
+        : err instanceof Error
+          ? err.message
+          : 'Generation failed'
       return c.json({ error: message }, 502)
     }
   })

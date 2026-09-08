@@ -13,6 +13,7 @@ export const gemini: AIProvider = {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+      signal: AbortSignal.timeout(20_000),
     })
     if (res.ok) return { ok: true }
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
