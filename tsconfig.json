@@ -10,5 +10,5 @@
     "declaration": true
   },
   "include": ["shared/**/*.ts", "server/**/*.ts"],
-  "exclude": ["web", "dist-server", "node_modules"]
+  "exclude": ["web", "dist-server", "node_modules", "**/*.test.ts"]
 }
