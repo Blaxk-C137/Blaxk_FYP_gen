@@ -124,3 +124,22 @@ env | grep -i proxy
 - both FAIL → genuine connectivity/DNS (causes 4–5)
 - node prints `OK 404` → the endpoint is reachable; the problem is elsewhere
   (re-test with the API key path in the app and capture the new server-side log)
+
+## Addendum (2026-09-08, post-fix diagnosis on the affected machine)
+
+After the fix, the surfaced cause was `ECONNRESET` during the TLS handshake with
+no proxy in use. Direct probes on the machine showed the block is **external and
+endpoint-specific**:
+
+| Destination                                | Browser | curl | Node fetch |
+| ------------------------------------------ | ------- | ---- | ---------- |
+| `generativelanguage.googleapis.com`        | ERR_CONNECTION_CLOSED | exit 35 (SSL error) | UND_ERR_CONNECT_TIMEOUT / ECONNRESET |
+| `aistudio.google.com`                      | OK      | 302  | —          |
+| `www.google.com`                           | —       | —    | OK 200     |
+| `api.openai.com`, `api.anthropic.com`      | —       | —    | OK         |
+
+DNS resolves to genuine Google IPs, no proxy env vars, and other Google
+properties work — so the network/ISP path is selectively dropping connections to
+the Gemini API endpoint. Nothing to fix in fypgen; the classified hint now says
+this explicitly. Workarounds for affected users: a different network/VPN, or an
+OpenAI/Anthropic key (both verified reachable).

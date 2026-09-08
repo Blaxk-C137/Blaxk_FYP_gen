@@ -20,7 +20,10 @@ export function describeNetworkError(err: unknown): NetworkFailure {
   if (/CERT|SSL|TLS/.test(code) || code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE')
     return { hint: 'the TLS certificate was rejected — an antivirus or firewall may be intercepting the connection', detail }
   if (['UND_ERR_CONNECT_TIMEOUT', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET'].includes(code))
-    return { hint: 'the connection timed out or was blocked — if you are behind a proxy or VPN, set the HTTPS_PROXY environment variable and restart fypgen', detail }
+    return {
+      hint: 'the connection timed out or was blocked — your network or ISP may be blocking this provider. If you use a proxy or VPN, set the HTTPS_PROXY environment variable and restart fypgen; otherwise try a different network or another provider',
+      detail,
+    }
   return { hint: 'check your internet connection and try again', detail }
 }
 
