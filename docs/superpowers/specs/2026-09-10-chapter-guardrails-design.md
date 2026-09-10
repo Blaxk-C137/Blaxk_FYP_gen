@@ -18,6 +18,33 @@ Plus one academic-integrity gap observed in both external reviews:
 
 6. **Fabricated sources and results** — the model invents references (authors, years, DOIs) and experimental metrics (accuracy, F1, confusion matrices) that the student cannot defend at viva.
 
+And one structural blind spot found by analyzing three real submitted projects (`docs/Projects/`):
+
+7. **One-size-fits-all structure** — generation currently assumes a single generic five-chapter shape. Real projects differ sharply by discipline: a Microbiology project's Chapter 3 is "MATERIAL AND METHODS" (media prep, sterilization, analyses), while a Sociology project's Chapter 3 is "RESEARCH METHODOLOGY" (design, population, sampling, instruments). The structure must adapt to the student's major.
+
+## Pattern analysis — real-project corpus (docs/Projects)
+
+Three Kaduna State University projects across three disciplines: **Microbiology** (biogas production, PGD), **Sociology** (broken homes, BSc), and **public-health/social research** (teenage abortion, compiled). Findings:
+
+**Constants across all three (validates the existing guardrail design):**
+- Five chapters: Introduction → Literature Review → Methodology → Results/Analysis → Summary, Conclusion & Recommendations
+- Decimal section numbering that follows the chapter number (1.1, 2.3.1, …) — and even these real submissions contain numbering slips (duplicate `2.3`, `2.2.0`, skipped `3.3`), confirming renumbering enforcement has real value
+- Preliminary pages: Title → Certification (signature lines: Supervisor, HOD, Coordinator/Dean) → Declaration → Dedication → Acknowledgements → Table of Content → List of Tables → Abstract
+- TOC lists sections down to two levels **with page numbers**; preliminary pages roman, body Arabic — exactly matches the Layer 3 export design
+- REFERENCES at the document end, alphabetical, author-year APA style
+- Chapter 5 is always Summary of Findings → Conclusion → Recommendations (± Limitations, Further Research)
+- Title-page metadata: university, faculty, department, name, matric, supervisor, date; titles frequently use "(A CASE STUDY OF …)"
+
+**Divergence by discipline (defines the track templates below):**
+
+| Aspect | Lab-science (Microbiology) | Social-survey (Sociology, Public Health) | Computing/Engineering (no corpus sample; per external suggestions) |
+|---|---|---|---|
+| Ch. 1 sections | Background, problem, aims | Background → Problem → Objectives/Purpose → Research Questions → Hypotheses (H₀/H₁) → Significance → Scope → Limitations → Definition of Terms | Background, problem, aims, objectives, scope |
+| Ch. 2 shape | Topic-structured review with sub-subsections (2.3.1 Hydrolysis…) | Conceptual Framework + Theoretical Framework + Empirical Review | Related works, technology review |
+| Ch. 3 title/shape | MATERIAL AND METHODS: materials, media/reagent prep, sterilization, enumeration, procedures, analyses | RESEARCH METHODOLOGY: design, population, sample & sampling technique, instrument validity/reliability, data collection, data analysis method | System Analysis & Design: requirements, architecture, tools, algorithms |
+| Ch. 4 shape | Measured results with tables (value ± SD) | Data analysis: demographic profile, then per-objective questionnaire tables (frequency, %) | Implementation & testing: screenshots described, test results |
+| Appendix | — | QUESTIONNAIRE | Source code listings |
+
 ## Decision summary
 
 - **Steer + enforce:** rules go into the prompts (reduce violations) AND output is validated/fixed after generation (catch what slips through) AND export formatting is composed deterministically in code (never delegated to the model).
@@ -25,10 +52,39 @@ Plus one academic-integrity gap observed in both external reviews:
 - **Client-side:** generation guardrails live in the web app as pure functions. The server remains a thin proxy (it holds no document state).
 - **Truth over polish** (from both external suggestions): a truthful incomplete document is preferable to a complete-looking fabricated one. Applies to citations and results via the placeholder policies below.
 - **Chapter 4 results:** the model writes the full results narrative, tables, and analysis structure, but every empirical value is a visible placeholder (`[INSERT ACTUAL ACCURACY]`) for the student to fill from real experiments.
+- **Discipline-adaptive, not course-hardcoded:** nothing in the pipeline assumes a particular faculty or course (the external Gemini suggestion hardcodes "Faculty of Engineering and Computer Science" — rejected). The student's major drives the structure via track templates.
 
 ## Unified guardrail policy (three enforcement layers)
 
 Distilled from the internal design plus the Gemini and ChatGPT suggestions. The bulk of the ChatGPT "Academic Research Integrity Agent" config describes a *review* agent; fypgen is a *generator*, so its review-time machinery (evidence levels, contradiction protocol, taxonomy integrity, change control, viva checks, submission-readiness statuses) is deferred to a possible v2 review pass. What survives the filter:
+
+### Layer 0 — Discipline tracks (`web/src/ai/tracks.ts`, new)
+
+The student's major selects one of three structural archetypes (patterns from the corpus table above):
+
+```ts
+type TrackId = 'science-lab' | 'social-survey' | 'computing-engineering'
+
+interface Track {
+  id: TrackId
+  label: string                     // 'Science (lab-based)', 'Social science (survey-based)', 'Computing / Engineering'
+  chapterTitles: [string, string, string, string, string]  // per-chapter title conventions
+  chapter1Sections: string[]        // Ch.1 section skeleton (Background, Problem, Objectives, …)
+  chapter2Sections: string[]        // review shape (frameworks / topic review / related works)
+  chapter3Sections: string[]        // methodology shape per track
+  chapter4Sections: string[]        // results shape per track
+  chapter4Steering: string          // how tables/results are presented (± SD tables / frequency-% tables / test results)
+  questionnaireAppendix: boolean    // social-survey only
+}
+
+function inferTrack(department: string): TrackId   // keyword mapping with sane default
+function trackFor(project: ProjectInfo): Track     // uses stored track, else inference
+```
+
+- **Inference:** keyword mapping over the department string — e.g. `sociology|psychology|political|economics|education|mass comm|nursing|social work` → social-survey; `microbiology|chemistry|biology|biochem|physics|science lab` → science-lab; `computer|software|engineer|IT|information tech|math` → computing-engineering. Unmatched defaults to social-survey (the most common FYP shape in the corpus).
+- **Override:** `ProjectSetup` gains a visible track selector (three chips, pre-selected from inference as the student types their department). Explicit choice always wins over inference.
+- **Store:** `ProjectInfo` gains optional `track?: TrackId`.
+- **Wiring:** `outlinePrompt` builds the outline from the track's section skeletons instead of the current generic five titles; `chapterPrompt` and `systemPrompt` drop hardcoded chapter titles in favor of the track's; Chapter 4 steering (table style + placeholders) and the questionnaire appendix (social-survey) come from the track.
 
 ### Layer 1 — Prompt steering (`web/src/prompts.ts`)
 
@@ -40,6 +96,7 @@ Distilled from the internal design plus the Gemini and ChatGPT suggestions. The 
 | No duplicated or repeated heading titles within a chapter | Gemini §3 |
 | Formal, objective, technical register; no dramatic or sensational language; no LaTeX/HTML — plain text with plain headings (equations in plain text) | internal + Gemini §2,§4 |
 | The model never writes a table of contents, title page, or preliminary pages — the app composes those | internal |
+| Chapter titles, section skeletons, and Chapter 4 table style follow the selected discipline track — never a hardcoded faculty or course | corpus analysis + user requirement |
 
 ### Layer 2 — Post-generation mechanical fixes (`web/src/ai/guardrails.ts`, new)
 
@@ -98,20 +155,28 @@ After each chapter's stream completes:
 
 External suggestion (Gemini): lower temperature improves structural compliance. Add an optional `temperature` to the provider stream request, sent by all three adapters, defaulting to **0.5** for chapter generation (low enough for structure, high enough to avoid dead prose). The provider interfaces (`server/providers/types.ts`, `gemini.ts`, `openai.ts`, `anthropic.ts`) gain one optional field each; the route passes it through.
 
+### Questionnaire appendix (social-survey track)
+
+The corpus shows a QUESTIONNAIRE appendix is standard for survey-based projects. For `social-survey` projects only, after Chapter 5 completes, one extra `generateStream` call produces the questionnaire (derived from the approved outline's objectives and research questions — never from the chapter text), exported as the final appendix after REFERENCES.
+
 ## Data flow
 
 ```
+ProjectSetup
+  → department typed → inferTrack() suggests track → user confirms/overrides → store.project.track
 Generate.tsx
-  → generateStream(system, chapterPrompt(n, contract), temperature=0.5)  # steer
+  → trackFor(project)                                          # Layer 0
+  → generateStream(system(track), chapterPrompt(track, n, contract), temperature=0.5)  # steer
   → fixChapterText(n, raw)                                              # enforce (L2)
       ├─ text → chapter.text (fixed)
       ├─ references → store.references
       └─ seriousViolations?
             ├─ none → done
             └─ some → one regen with nudge=violations → fix again → accept better
+  → (social-survey only) questionnaire appendix after Chapter 5
 Export.tsx
   → docx.ts: title/abstract/TOC section (roman) + body section (Arabic, page breaks)
-  → chapters + store.references → document with trailing REFERENCES
+  → chapters + store.references → document with trailing REFERENCES (+ questionnaire appendix)
 ```
 
 ## Error handling
@@ -123,15 +188,17 @@ Export.tsx
 
 ## Testing
 
+- `web/src/ai/tracks.test.ts` — inference maps each corpus department correctly (Microbiology → science-lab, Sociology → social-survey, Telecommunications Engineering → computing-engineering); unknown departments default to social-survey; explicit `track` in the store overrides inference; each track's section skeletons are non-empty and chapter titles follow corpus conventions.
 - `web/src/ai/guardrails.test.ts` — table-driven: renumber (incl. the real 4.1–7.3-in-chapter-3 case as a regression fixture), references extraction (block present / absent / mid-chapter / case-insensitive heading), heading normalization, duplicate-heading collapse, clean text returned untouched, garbled text flagged not thrown.
 - `web/src/screens/Generate.test.tsx` — mock stream returns a violating chapter; assert one regen fires with a nudge containing the violation detail; assert second attempt is accepted; assert references land in the store.
-- `web/src/export/docx.test.ts` — the docx contains two sections with roman/Arabic footers, a `TableOfContents` field, `pageBreakBefore` on chapter headings, and the references section at the end, alphabetized and de-duplicated.
+- `web/src/screens/ProjectSetup.test.tsx` — track selector appears, pre-selects from department inference, explicit choice persists to the store.
+- `web/src/screens/Export.test.tsx` / `web/src/export/docx.test.ts` — the docx contains two sections with roman/Arabic footers, a `TableOfContents` field, `pageBreakBefore` on chapter headings, the references section at the end (alphabetized, de-duplicated), and the questionnaire appendix for social-survey projects.
 - Provider tests — temperature is sent in each adapter's request body when provided.
 
 ## Out of scope (v2)
 
-- Few-shot excerpts from real project reports (pending rights-cleared sample collection).
+- Few-shot excerpts from real project reports (pending rights-cleared sample collection; the `docs/Projects/` corpus is the natural starting point — get permission from the authors first).
 - Review-agent features from the external suggestions: evidence-level labeling, contradiction detection, taxonomy consistency checks, viva-defensibility checks, submission-readiness scoring.
-- Additional preliminary pages (Declaration, Certification, Dedication, Acknowledgements, Lists of Figures/Tables/Abbreviations).
+- Additional preliminary pages (Declaration, Certification, Dedication, Acknowledgements, List of Tables/Figures/Abbreviations) — corpus-confirmed as standard, but they need per-student content and signature-line templates.
 - Department-specific rule profiles (formatting contract explicitly yields to a real departmental guideline when one exists).
 - Numbered tables/figures with in-text referencing (needs table extraction from generated text; revisit with few-shot work).
