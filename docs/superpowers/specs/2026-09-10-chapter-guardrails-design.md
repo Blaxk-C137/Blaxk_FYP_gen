@@ -58,9 +58,16 @@ Three Kaduna State University projects across three disciplines: **Microbiology*
 
 Distilled from the internal design plus the Gemini and ChatGPT suggestions. The bulk of the ChatGPT "Academic Research Integrity Agent" config describes a *review* agent; fypgen is a *generator*, so its review-time machinery (evidence levels, contradiction protocol, taxonomy integrity, change control, viva checks, submission-readiness statuses) is deferred to a possible v2 review pass. What survives the filter:
 
-### Layer 0 — Discipline tracks (`web/src/ai/tracks.ts`, new)
+### Layer 0 — Course of study → discipline track (`web/src/ai/tracks.ts`, `web/src/data/courses.ts`, new)
 
-The student's major selects one of three structural archetypes (patterns from the corpus table above):
+The student's **field of study + course of study** (two levels: e.g. Social Sciences → Psychology, Engineering & Technology → Mechatronics Engineering) selects one of three structural archetypes (patterns from the corpus table above).
+
+**Collection (ProjectSetup):** the free-text "Department" field is replaced by a two-level cascade —
+- **Field of study** — select over the NUC broad fields (Agriculture, Arts, Basic Medical Sciences, Education, Engineering & Technology, Environmental Sciences, Law, Management Sciences, Medicine & Health Sciences, Pharmacy, Sciences, Social Sciences, Veterinary Medicine).
+- **Course of study** — autocomplete input backed by a bundled static list of NUC-accredited course titles (`web/src/data/courses.ts`), filtered by field. Custom entries remain typeable for programmes not in the list.
+- The cascade also feeds the title page, which per the corpus needs faculty + department + degree.
+
+**Mapping:**
 
 ```ts
 type TrackId = 'science-lab' | 'social-survey' | 'computing-engineering'
@@ -77,13 +84,21 @@ interface Track {
   questionnaireAppendix: boolean    // social-survey only
 }
 
-function inferTrack(department: string): TrackId   // keyword mapping with sane default
-function trackFor(project: ProjectInfo): Track     // uses stored track, else inference
+interface CourseEntry { field: FieldOfStudy; course: string; track: TrackId }
+
+function trackForCourse(course: string, field: FieldOfStudy): TrackId
+  // known course in COURSES → its assigned track (deterministic)
+  // unknown course → keyword inference over the course string, else the field's default track
+  //   (Arts/Law/Social Sciences/Management/Education → social-survey;
+  //    Sciences/Pharmacy/Basic Medical → science-lab;
+  //    Engineering & Technology/Environmental → computing-engineering or science-lab default)
+function trackFor(project: ProjectInfo): Track     // uses stored track, else trackForCourse
 ```
 
-- **Inference:** keyword mapping over the department string — e.g. `sociology|psychology|political|economics|education|mass comm|nursing|social work` → social-survey; `microbiology|chemistry|biology|biochem|physics|science lab` → science-lab; `computer|software|engineer|IT|information tech|math` → computing-engineering. Unmatched defaults to social-survey (the most common FYP shape in the corpus).
-- **Override:** `ProjectSetup` gains a visible track selector (three chips, pre-selected from inference as the student types their department). Explicit choice always wins over inference.
-- **Store:** `ProjectInfo` gains optional `track?: TrackId`.
+- **Known courses** carry their track directly in `courses.ts` — no guessing (Mechatronics Engineering → computing-engineering, Psychology → social-survey, Medical Laboratory Science → science-lab).
+- **Unknown/custom courses** fall back to keyword inference, then to the field's default track.
+- **Override:** ProjectSetup shows the resolved track as three chips; the student's explicit choice always wins over both list and inference.
+- **Store:** `ProjectInfo` gains `fieldOfStudy?: string`, `courseOfStudy?: string` (replacing/augmenting `department`), and `track?: TrackId`.
 - **Wiring:** `outlinePrompt` builds the outline from the track's section skeletons instead of the current generic five titles; `chapterPrompt` and `systemPrompt` drop hardcoded chapter titles in favor of the track's; Chapter 4 steering (table style + placeholders) and the questionnaire appendix (social-survey) come from the track.
 
 ### Layer 1 — Prompt steering (`web/src/prompts.ts`)
@@ -163,7 +178,8 @@ The corpus shows a QUESTIONNAIRE appendix is standard for survey-based projects.
 
 ```
 ProjectSetup
-  → department typed → inferTrack() suggests track → user confirms/overrides → store.project.track
+  → field of study (NUC select) + course of study (autocomplete from courses.ts, custom allowed)
+  → trackForCourse() resolves track → shown as chips → user confirms/overrides → store
 Generate.tsx
   → trackFor(project)                                          # Layer 0
   → generateStream(system(track), chapterPrompt(track, n, contract), temperature=0.5)  # steer
@@ -188,7 +204,7 @@ Export.tsx
 
 ## Testing
 
-- `web/src/ai/tracks.test.ts` — inference maps each corpus department correctly (Microbiology → science-lab, Sociology → social-survey, Telecommunications Engineering → computing-engineering); unknown departments default to social-survey; explicit `track` in the store overrides inference; each track's section skeletons are non-empty and chapter titles follow corpus conventions.
+- `web/src/ai/tracks.test.ts` — `trackForCourse` maps known courses deterministically (Mechatronics Engineering → computing-engineering, Psychology → social-survey, Medical Laboratory Science → science-lab, Mass Communication → social-survey); each corpus department resolves correctly; custom/unknown courses fall back to keyword inference then the field default; explicit `track` in the store overrides everything; every course in `courses.ts` has a valid field and track; each track's section skeletons are non-empty and chapter titles follow corpus conventions.
 - `web/src/ai/guardrails.test.ts` — table-driven: renumber (incl. the real 4.1–7.3-in-chapter-3 case as a regression fixture), references extraction (block present / absent / mid-chapter / case-insensitive heading), heading normalization, duplicate-heading collapse, clean text returned untouched, garbled text flagged not thrown.
 - `web/src/screens/Generate.test.tsx` — mock stream returns a violating chapter; assert one regen fires with a nudge containing the violation detail; assert second attempt is accepted; assert references land in the store.
 - `web/src/screens/ProjectSetup.test.tsx` — track selector appears, pre-selects from department inference, explicit choice persists to the store.
