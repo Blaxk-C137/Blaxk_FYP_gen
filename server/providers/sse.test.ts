@@ -27,4 +27,16 @@ describe('parseSSE', () => {
     for await (const t of parseSSE(res, (d) => (JSON.parse(d).t ?? undefined))) out.push(t)
     expect(out).toEqual(['ok'])
   })
+  it('yields text from CRLF-framed events, as Google APIs emit them', async () => {
+    const res = sseResponse(['data: {"t":"Hello"}\r\n\r\n', 'data: {"t":" world"}\r\n\r\n'])
+    const out: string[] = []
+    for await (const t of parseSSE(res, (d) => JSON.parse(d).t)) out.push(t)
+    expect(out).toEqual(['Hello', ' world'])
+  })
+  it('yields text when a CRLF pair is split across chunks', async () => {
+    const res = sseResponse(['data: {"t":"Hello"}\r', '\n\r\n'])
+    const out: string[] = []
+    for await (const t of parseSSE(res, (d) => JSON.parse(d).t)) out.push(t)
+    expect(out).toEqual(['Hello'])
+  })
 })

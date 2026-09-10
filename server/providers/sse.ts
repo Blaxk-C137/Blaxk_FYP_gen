@@ -10,7 +10,9 @@ export async function* parseSSE(
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-    buffer += decoder.decode(value, { stream: true })
+    // The SSE spec allows CRLF, LF, or CR line terminators; Google APIs emit
+    // CRLF. Normalize to LF so events separate correctly regardless of provider.
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n?/g, '\n')
     let idx: number
     while ((idx = buffer.indexOf('\n\n')) !== -1) {
       const event = buffer.slice(0, idx)

@@ -34,9 +34,21 @@ export const gemini: AIProvider = {
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
       throw new Error(body.error?.message ?? `Gemini error HTTP ${res.status}`)
     }
-    yield* parseSSE(res, (data) => {
+    // Keep the last raw event so a textless stream (safety block, empty
+    // candidates) can be reported with its actual reason instead of silence.
+    let lastEvent = ''
+    let textChunks = 0
+    for await (const text of parseSSE(res, (data) => {
+      lastEvent = data
       const j = JSON.parse(data) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
       return j.candidates?.[0]?.content?.parts?.[0]?.text
-    })
+    })) {
+      textChunks++
+      yield text
+    }
+    if (textChunks === 0)
+      throw new Error(
+        `Gemini returned no text. Last event: ${lastEvent.slice(0, 300) || '(empty stream)'}`
+      )
   },
 }

@@ -19,12 +19,16 @@ export function Outline({ onNext }: { onNext: () => void }) {
 
   async function generate() {
     setState('generating')
+    let raw = ''
     try {
-      const raw = await generateStream(settings, systemPrompt(), outlinePrompt(project), () => {})
+      raw = await generateStream(settings, systemPrompt(), outlinePrompt(project), () => {})
       const parsed = parseOutline(raw)
       setOutline(parsed.chapters, parsed.abstract)
       setState('ready')
     } catch (e) {
+      // Keep the full raw model output reachable from the browser console —
+      // it is the only way to see what the model actually said when parsing fails.
+      console.error('[fypgen] outline generation failed. Raw model output:', raw || '(empty)')
       setError(e instanceof Error ? e.message : 'Generation failed')
       setState('error')
     }

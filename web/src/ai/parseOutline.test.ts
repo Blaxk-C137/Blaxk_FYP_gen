@@ -29,4 +29,20 @@ describe('parseOutline', () => {
   it('throws on garbage', () => {
     expect(() => parseOutline('I could not do that')).toThrow('Model did not return valid JSON')
   })
+
+  it('names the parse error and shows what the model said', () => {
+    expect(() => parseOutline('Here you go, no JSON at all')).toThrow(
+      /Model did not return valid JSON \(.*\)\. Model said: "Here you go, no JSON at all"/
+    )
+  })
+
+  it('distinguishes valid JSON that lacks a chapters array', () => {
+    expect(() => parseOutline('{"abstract": "A study.", "outline": []}')).toThrow(
+      'Model returned JSON without a "chapters" array'
+    )
+  })
+
+  it('names an empty model response', () => {
+    expect(() => parseOutline('')).toThrow('Model returned an empty response')
+  })
 })

@@ -17,6 +17,19 @@ function geminiStream(texts: string[]): Response {
   return new Response(stream, { status: 200 })
 }
 
+/** Real-world Gemini framing: Google emits SSE with CRLF line endings. */
+function geminiCrlfStream(texts: string[]): Response {
+  const enc = new TextEncoder()
+  const stream = new ReadableStream({
+    start(c) {
+      for (const t of texts)
+        c.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: t }] } }] })}\r\n\r\n`))
+      c.close()
+    },
+  })
+  return new Response(stream, { status: 200 })
+}
+
 describe('gemini adapter', () => {
   it('streams chapter text chunks', async () => {
     fetchMock.mockResolvedValueOnce(geminiStream(['Chapter ', 'one text']))
@@ -28,6 +41,34 @@ describe('gemini adapter', () => {
     expect(url).toContain('gemini-2.5-flash:streamGenerateContent?alt=sse')
     expect(init.headers['x-goog-api-key']).toBe('k')
     expect(JSON.parse(init.body).systemInstruction.parts[0].text).toBe('s')
+  })
+
+  it('streams text from CRLF-framed SSE events (Google line endings)', async () => {
+    fetchMock.mockResolvedValueOnce(geminiCrlfStream(['Chapter ', 'one text']))
+    const chunks: string[] = []
+    for await (const t of gemini.stream({ apiKey: 'k', system: 's', prompt: 'p' }))
+      chunks.push(t)
+    expect(chunks.join('')).toBe('Chapter one text')
+  })
+
+  it('throws with the last event when the stream completes with no text (e.g. safety block)', async () => {
+    const blocked = JSON.stringify({
+      candidates: [{ finishReason: 'SAFETY' }],
+      promptFeedback: { blockReason: 'SAFETY' },
+    })
+    const enc = new TextEncoder()
+    const stream = new ReadableStream({
+      start(c) {
+        c.enqueue(enc.encode(`data: ${blocked}\r\n\r\n`))
+        c.close()
+      },
+    })
+    fetchMock.mockResolvedValueOnce(new Response(stream, { status: 200 }))
+    await expect(
+      (async () => {
+        for await (const _ of gemini.stream({ apiKey: 'k', system: 's', prompt: 'p' }));
+      })()
+    ).rejects.toThrow(/SAFETY/)
   })
 
   it('testKey surfaces API errors', async () => {
