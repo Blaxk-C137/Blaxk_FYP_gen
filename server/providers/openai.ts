@@ -18,13 +18,14 @@ export const openai: AIProvider = {
     return { ok: false, error: body.error?.message ?? `HTTP ${res.status}` }
   },
 
-  async *stream({ apiKey, model, system, prompt }) {
+  async *stream({ apiKey, model, system, prompt, temperature }) {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: model ?? this.defaultModel,
         stream: true,
+        ...(temperature !== undefined ? { temperature } : {}),
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: prompt },

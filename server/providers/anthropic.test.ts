@@ -41,3 +41,15 @@ describe('anthropic adapter', () => {
     expect(r).toEqual({ ok: false, error: 'invalid x-api-key' })
   })
 })
+
+describe('anthropic adapter temperature', () => {
+  it('sends temperature when provided and omits it when not', async () => {
+    fetchMock.mockResolvedValueOnce(anthropicStream(['ok']))
+    for await (const t of anthropic.stream({ apiKey: 'k', system: 's', prompt: 'p', temperature: 0.5 })) void t
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body).temperature).toBe(0.5)
+
+    fetchMock.mockResolvedValueOnce(anthropicStream(['ok']))
+    for await (const t of anthropic.stream({ apiKey: 'k', system: 's', prompt: 'p' })) void t
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body).temperature).toBeUndefined()
+  })
+})

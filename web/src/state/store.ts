@@ -1,11 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ProviderId } from '@shared/constants'
+import type { TrackId } from '../ai/tracks'
 
 export interface Settings { provider: ProviderId; apiKey: string; model?: string }
+export type LengthPreset = 'compact' | 'standard' | 'detailed'
 export interface ProjectInfo {
   topic: string; studentName: string; matric: string; university: string
   department: string; supervisor: string; degree: string; session: string
+  fieldOfStudy?: string; courseOfStudy?: string; track?: TrackId
+  lengthPreset?: LengthPreset
 }
 export interface Section { heading: string; description: string }
 export type ChapterStatus = 'pending' | 'streaming' | 'done'
@@ -35,11 +39,14 @@ interface AppState {
   project: ProjectInfo
   chapters: Chapter[]
   abstract: string
+  references: string[]
   setSettings: (s: Settings) => void
   setProject: (p: Partial<ProjectInfo>) => void
   setOutline: (chapters: Chapter[], abstract: string) => void
+  setChapters: (chapters: Chapter[]) => void
   updateChapter: (number: number, patch: Partial<Chapter>) => void
   appendChapterText: (number: number, chunk: string) => void
+  setReferences: (refs: string[]) => void
   reset: () => void
 }
 
@@ -50,9 +57,11 @@ export const useAppStore = create<AppState>()(
       project: EMPTY_PROJECT,
       chapters: initialChapterState(),
       abstract: '',
+      references: [],
       setSettings: (s) => set({ settings: s }),
       setProject: (p) => set((st) => ({ project: { ...st.project, ...p } })),
       setOutline: (chapters, abstract) => set({ chapters, abstract }),
+      setChapters: (chapters) => set({ chapters }),
       updateChapter: (number, patch) =>
         set((st) => ({
           chapters: st.chapters.map((c) => (c.number === number ? { ...c, ...patch } : c)),
@@ -61,8 +70,9 @@ export const useAppStore = create<AppState>()(
         set((st) => ({
           chapters: st.chapters.map((c) => (c.number === number ? { ...c, text: c.text + chunk } : c)),
         })),
+      setReferences: (refs) => set({ references: refs }),
       reset: () =>
-        set({ project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '' }),
+        set({ project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '', references: [] }),
     }),
     { name: 'fypgen-state' }
   )

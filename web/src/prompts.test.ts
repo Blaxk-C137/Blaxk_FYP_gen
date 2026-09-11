@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { systemPrompt, outlinePrompt, chapterPrompt, defenseQuestionsPrompt } from './prompts'
 import { EMPTY_PROJECT, initialChapterState } from './state/store'
+import { TRACKS } from './ai/tracks'
 
 const project = {
   ...EMPTY_PROJECT,
@@ -11,12 +12,18 @@ const project = {
 }
 
 describe('prompts', () => {
-  it('systemPrompt encodes Nigerian FYP conventions', () => {
-    const s = systemPrompt()
-    expect(s).toContain('five-chapter')
-    expect(s).toContain('Nigerian final-year')
+  it('systemPrompt encodes Nigerian FYP conventions for the track', () => {
+    const s = systemPrompt(TRACKS['computing-engineering'])
+    expect(s).toContain('Nigerian')
     expect(s).toContain('CHAPTER ONE')
-    expect(s).toContain('2,500')
+    expect(s).toContain('five-chapter format')
+    // Citation + results integrity steering (spec Layer 1)
+    expect(s).toContain('[INSERT VERIFIED CITATION HERE]')
+    expect(s).toContain('REFERENCES list inside a chapter')
+    // Chapter titles come from the track, not a hardcoded list
+    expect(s).toContain(TRACKS['computing-engineering'].chapterTitles[2])
+    // Track-independent: chapter 1 is always the introduction
+    expect(systemPrompt(TRACKS['social-survey'])).toContain('CHAPTER ONE (INTRODUCTION)')
   })
 
   it('outlinePrompt carries project fields and demands JSON', () => {

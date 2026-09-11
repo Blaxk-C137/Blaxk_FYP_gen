@@ -21,14 +21,15 @@ export async function generateStream(
   settings: Settings,
   system: string,
   prompt: string,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  temperature?: number
 ): Promise<string> {
   const res = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       provider: settings.provider, apiKey: settings.apiKey, model: settings.model,
-      system, prompt,
+      system, prompt, temperature,
     }),
   })
   if (!res.ok || !res.body) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAppStore } from '../state/store'
 import { generateStream } from '../api'
 import { systemPrompt, outlinePrompt } from '../prompts'
+import { trackFor } from '../ai/tracks'
 import { parseOutline } from '../ai/parseOutline'
 
 const WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
@@ -21,7 +22,8 @@ export function Outline({ onNext }: { onNext: () => void }) {
     setState('generating')
     let raw = ''
     try {
-      raw = await generateStream(settings, systemPrompt(), outlinePrompt(project), () => {})
+      const track = trackFor(project.track, project.courseOfStudy, project.fieldOfStudy)
+      raw = await generateStream(settings, systemPrompt(track), outlinePrompt(project), () => {})
       const parsed = parseOutline(raw)
       setOutline(parsed.chapters, parsed.abstract)
       setState('ready')

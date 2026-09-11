@@ -11,6 +11,7 @@ interface GenerateBody {
   model?: string
   system?: string
   prompt?: string
+  temperature?: number
 }
 
 /** `Could not reach gemini: <classified hint> (CODE: message)` */
@@ -61,6 +62,7 @@ export function registerAIRoutes(app: Hono) {
       model: body.model,
       system: body.system,
       prompt: body.prompt,
+      temperature: body.temperature,
     })
     try {
       // Pull the first chunk before committing to a 200, so an immediate

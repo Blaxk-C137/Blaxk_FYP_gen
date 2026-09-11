@@ -189,6 +189,34 @@ h2 {
 
 @keyframes caret { 50% { opacity: 0; } }
 
+/* ---------- selectable chips (track / options) ---------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+
+button.chip {
+  cursor: pointer;
+}
+
+button.chip.selected,
+button.chip[aria-checked='true'] {
+  color: var(--green-ink);
+  border-color: color-mix(in srgb, var(--green) 30%, transparent);
+  background: var(--green-wash);
+}
+
+.field > .label,
+.field > span.label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+}
+
 /* ---------- forms ---------- */
 
 .field { margin-bottom: 1.1rem; }

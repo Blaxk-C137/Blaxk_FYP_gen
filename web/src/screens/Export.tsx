@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAppStore, useProject, useChapters, useSettings } from '../state/store'
 import { generateStream } from '../api'
 import { systemPrompt, defenseQuestionsPrompt } from '../prompts'
+import { trackFor } from '../ai/tracks'
 import { buildDocx } from '../export/docx'
 import { buildPptx } from '../export/pptx'
 import { downloadBlob } from '../export/download'
@@ -15,6 +16,7 @@ export function Export() {
   const chapters = useChapters()
   const settings = useSettings()
   const abstract = useAppStore((s) => s.abstract)
+  const references = useAppStore((s) => s.references)
   const [defenseQa, setDefenseQa] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -23,7 +25,7 @@ export function Export() {
     setBusy('docx')
     setError('')
     try {
-      downloadBlob(await buildDocx(project, chapters, abstract), `${slug(project.topic)}.docx`)
+      downloadBlob(await buildDocx(project, chapters, abstract, references), `${slug(project.topic)}.docx`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed')
     } finally {
@@ -36,8 +38,9 @@ export function Export() {
     setError('')
     try {
       if (!defenseQa) {
+        const track = trackFor(project.track, project.courseOfStudy, project.fieldOfStudy)
         const qa = await generateStream(
-          settings, systemPrompt(), defenseQuestionsPrompt(project, chapters), () => {}
+          settings, systemPrompt(track), defenseQuestionsPrompt(project, chapters), () => {}
         )
         setDefenseQa(qa)
         downloadBlob(await buildPptx(project, chapters, qa), `${slug(project.topic)}-defense.pptx`)

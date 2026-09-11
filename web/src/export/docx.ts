@@ -1,88 +1,134 @@
 import {
-  AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun,
+  AlignmentType, Document, Footer, HeadingLevel, NumberFormat, PageNumber,
+  Packer, Paragraph, TableOfContents, TextRun,
 } from 'docx'
 import type { Chapter, ProjectInfo } from '../state/store'
 
 export const REFERENCES_LABEL = 'AI-generated references — verify before submission.'
+const NO_REFERENCES_PLACEHOLDER =
+  'No references were collected. Add your references here in APA 7 format.'
 
-/** Extracts any "References" section from chapter texts; synthesizes one if absent. */
-export function referencesSection(chapters: Chapter[]): string {
-  const collected: string[] = []
-  for (const ch of chapters) {
-    const idx = ch.text.lastIndexOf('References')
-    if (idx !== -1 && idx < ch.text.length) {
-      collected.push(ch.text.slice(idx + 'References'.length).trim())
-    }
-  }
-  const body = collected.length
-    ? collected.join('\n\n')
-    : 'No references were generated. Add your references here in APA 7 format.'
+/**
+ * Composes the document references section: de-duplicated, alphabetized store
+ * references (populated by Layer 2 extraction) plus the verification label.
+ */
+export function referencesSection(chapters: Chapter[] = [], references: string[] = []): string {
+  void chapters // kept for signature stability; references now come from the store
+  const unique = Array.from(new Set(references.map((r) => r.trim()))).filter(Boolean)
+  unique.sort((a, b) => a.localeCompare(b))
+  const body = unique.length ? unique.join('\n\n') : NO_REFERENCES_PLACEHOLDER
   return `${body}\n\n${REFERENCES_LABEL}`
 }
 
-const body = (text: string, opts: { bold?: boolean; heading?: (typeof HeadingLevel)[keyof typeof HeadingLevel]; align?: (typeof AlignmentType)[keyof typeof AlignmentType] } = {}) =>
+const body = (text: string, opts: { bold?: boolean; heading?: (typeof HeadingLevel)[keyof typeof HeadingLevel]; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; pageBreakBefore?: boolean } = {}) =>
   new Paragraph({
     heading: opts.heading,
     alignment: opts.align ?? AlignmentType.JUSTIFIED,
+    pageBreakBefore: opts.pageBreakBefore,
     spacing: { line: 480 }, // double spacing
     children: [new TextRun({ text, bold: opts.bold, font: 'Times New Roman', size: 24 })], // 12pt = 24 half-points
   })
 
+// 1-inch margins.
+const PAGE = { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } }
+
+/** Footer with centered page numbers. */
+function numberedFooter() {
+  return new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ children: [PageNumber.CURRENT], font: 'Times New Roman', size: 24 }),
+        ],
+      }),
+    ],
+  })
+}
+
+/**
+ * Layer 3 of the chapter-guardrails design — deterministic export composition.
+ * The model never decides document furniture: code composes the title page,
+ * abstract, table of contents, page numbering, page breaks, and the trailing
+ * references section (after any questionnaire appendix).
+ *
+ * Two Word sections: preliminary pages (roman-numeral footer), body
+ * (Arabic numerals restarting at 1). The TOC is a real Word field over
+ * Heading 1/2 so entries render with page numbers.
+ */
 export async function buildDocx(
   project: ProjectInfo,
   chapters: Chapter[],
-  abstract: string
+  abstract: string,
+  references: string[] = []
 ): Promise<Blob> {
-  const children: Paragraph[] = []
+  // ---- Preliminary section: title page, abstract, TOC (roman numerals) ----
+  const prelim: (Paragraph | TableOfContents)[] = []
+  prelim.push(body(project.university.toUpperCase(), { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1 }))
+  prelim.push(body(project.courseOfStudy ?? project.department, { align: AlignmentType.CENTER }))
+  prelim.push(body('', {}))
+  prelim.push(body(project.topic, { bold: true, align: AlignmentType.CENTER }))
+  prelim.push(body('by', { align: AlignmentType.CENTER }))
+  prelim.push(body(`${project.studentName} (${project.matric})`, { align: AlignmentType.CENTER }))
+  prelim.push(body('', {}))
+  prelim.push(body(`A ${project.degree} Final Year Project Report`, { align: AlignmentType.CENTER }))
+  prelim.push(body(`Supervisor: ${project.supervisor}`, { align: AlignmentType.CENTER }))
+  prelim.push(body(project.session, { align: AlignmentType.CENTER }))
 
-  // Title page
-  children.push(body(project.university.toUpperCase(), { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1 }))
-  children.push(body(project.department, { align: AlignmentType.CENTER }))
-  children.push(body('', {}))
-  children.push(body(project.topic, { bold: true, align: AlignmentType.CENTER }))
-  children.push(body('by', { align: AlignmentType.CENTER }))
-  children.push(body(`${project.studentName} (${project.matric})`, { align: AlignmentType.CENTER }))
-  children.push(body('', {}))
-  children.push(body(`A ${project.degree} Final Year Project Report`))
-  children.push(body(`Supervisor: ${project.supervisor}`, { align: AlignmentType.CENTER }))
-  children.push(body(project.session, { align: AlignmentType.CENTER }))
+  prelim.push(body('ABSTRACT', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, pageBreakBefore: true }))
+  prelim.push(body(abstract || 'Abstract pending generation.'))
 
-  // Abstract + TOC heading
-  children.push(body('ABSTRACT', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1 }))
-  children.push(body(abstract || 'Abstract pending generation.'))
-  children.push(body('TABLE OF CONTENTS', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1 }))
-  for (const ch of chapters) {
-    children.push(body(`CHAPTER ${toWord(ch.number)}: ${ch.title}`, { bold: true }))
-  }
-  children.push(body('REFERENCES', { bold: true }))
+  prelim.push(body('TABLE OF CONTENTS', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, pageBreakBefore: true }))
+  prelim.push(new TableOfContents('Table of Contents', {
+    hyperlink: true,
+    headingStyleRange: '1-2',
+  }))
 
-  // Chapters
+  // ---- Body section: chapters (+ appendix), references (Arabic, restart at 1) ----
+  const bodyChildren: Paragraph[] = []
   for (const ch of chapters) {
     if (!ch.text) continue
+    let firstHeading = true
     for (const line of ch.text.split('\n')) {
       const t = line.trim()
       if (!t) continue
-      if (/^CHAPTER\s+/i.test(t)) children.push(body(t.toUpperCase(), { bold: true, heading: HeadingLevel.HEADING_1, align: AlignmentType.LEFT }))
-      else if (/^\d+\.\d+/.test(t)) children.push(body(t, { heading: HeadingLevel.HEADING_2, align: AlignmentType.LEFT }))
-      else children.push(body(t))
+      if (/^CHAPTER\s+/i.test(t)) {
+        bodyChildren.push(body(t.toUpperCase(), { bold: true, heading: HeadingLevel.HEADING_1, align: AlignmentType.LEFT, pageBreakBefore: true }))
+        firstHeading = false
+      } else if (/^APPENDIX/i.test(t)) {
+        bodyChildren.push(body(t.toUpperCase(), { bold: true, heading: HeadingLevel.HEADING_1, align: AlignmentType.LEFT, pageBreakBefore: firstHeading }))
+        firstHeading = false
+      } else if (/^\d+\.\d+/.test(t)) {
+        bodyChildren.push(body(t, { heading: HeadingLevel.HEADING_2, align: AlignmentType.LEFT }))
+      } else {
+        bodyChildren.push(body(t))
+      }
     }
   }
 
-  // References
-  children.push(body('REFERENCES', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1 }))
-  for (const ref of referencesSection(chapters).split('\n')) {
+  // References — always last.
+  bodyChildren.push(body('REFERENCES', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, pageBreakBefore: true }))
+  for (const ref of referencesSection(chapters, references).split('\n')) {
     const t = ref.trim()
-    if (t) children.push(body(t, { align: AlignmentType.LEFT }))
+    if (t) bodyChildren.push(body(t, { align: AlignmentType.LEFT }))
   }
 
   const doc = new Document({
     styles: { default: { document: { run: { font: 'Times New Roman', size: 24 } } } },
-    sections: [{ properties: { page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } }, children }],
+    features: { updateFields: true }, // Word offers to refresh the TOC field on open
+    sections: [
+      {
+        // NB: this docx version reads pageNumbers from inside `page`
+        properties: { page: { ...PAGE, pageNumbers: { start: 1, formatType: NumberFormat.LOWER_ROMAN } } },
+        footers: { default: numberedFooter() },
+        children: prelim,
+      },
+      {
+        properties: { page: { ...PAGE, pageNumbers: { start: 1, formatType: NumberFormat.DECIMAL } } },
+        footers: { default: numberedFooter() },
+        children: bodyChildren,
+      },
+    ],
   })
   return Packer.toBlob(doc)
-}
-
-const WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
-function toWord(n: number): string {
-  return WORDS[n - 1] ?? String(n)
 }

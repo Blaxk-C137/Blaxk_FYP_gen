@@ -20,7 +20,7 @@ export const gemini: AIProvider = {
     return { ok: false, error: body.error?.message ?? `HTTP ${res.status}` }
   },
 
-  async *stream({ apiKey, model, system, prompt }) {
+  async *stream({ apiKey, model, system, prompt, temperature }) {
     const m = model ?? this.defaultModel
     const res = await fetch(`${BASE}/${m}:streamGenerateContent?alt=sse`, {
       method: 'POST',
@@ -28,6 +28,7 @@ export const gemini: AIProvider = {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        ...(temperature !== undefined ? { generationConfig: { temperature } } : {}),
       }),
     })
     if (!res.ok) {

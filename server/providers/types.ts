@@ -5,6 +5,14 @@ export interface ChatRequest {
   model?: string
   system: string
   prompt: string
+  temperature?: number
+}
+
+/** Optional image-generation capability (providers without it simply omit it). */
+export interface ImageRequest {
+  apiKey: string
+  model?: string
+  prompt: string
 }
 
 export interface AIProvider {
@@ -12,4 +20,5 @@ export interface AIProvider {
   defaultModel: string
   testKey(apiKey: string): Promise<{ ok: boolean; error?: string }>
   stream(req: ChatRequest): AsyncGenerator<string>
+  generateImage?(req: ImageRequest): Promise<{ base64: string }>
 }

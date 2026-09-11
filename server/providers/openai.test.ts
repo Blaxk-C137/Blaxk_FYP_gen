@@ -39,3 +39,15 @@ describe('openai adapter', () => {
     expect(r).toEqual({ ok: false, error: 'Incorrect API key' })
   })
 })
+
+describe('openai adapter temperature', () => {
+  it('sends temperature when provided and omits it when not', async () => {
+    fetchMock.mockResolvedValueOnce(oaiStream(['ok']))
+    for await (const t of openai.stream({ apiKey: 'k', system: 's', prompt: 'p', temperature: 0.5 })) void t
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body).temperature).toBe(0.5)
+
+    fetchMock.mockResolvedValueOnce(oaiStream(['ok']))
+    for await (const t of openai.stream({ apiKey: 'k', system: 's', prompt: 'p' })) void t
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body).temperature).toBeUndefined()
+  })
+})

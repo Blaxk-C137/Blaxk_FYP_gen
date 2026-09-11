@@ -26,4 +26,24 @@ describe('ProjectSetup', () => {
     await userEvent.click(screen.getByRole('button', { name: /continue/i }))
     expect(screen.getByText(/enter a topic/i)).toBeTruthy()
   })
+
+  it('shows the track selector pre-selected from the course', async () => {
+    render(<ProjectSetup onNext={() => {}} />)
+    // Select a field, then type a known course
+    await userEvent.selectOptions(screen.getByLabelText(/field of study/i), 'Social Sciences')
+    await userEvent.type(screen.getByLabelText(/course of study/i), 'Psychology')
+    // Psychology resolves to the social-survey track — chip shows selected
+    const socialChip = screen.getByRole('radio', { name: /Social science/i })
+    expect(socialChip.getAttribute('aria-checked')).toBe('true')
+    expect(useAppStore.getState().project.courseOfStudy).toBe('Psychology')
+  })
+
+  it('explicit track choice persists to the store over inference', async () => {
+    render(<ProjectSetup onNext={() => {}} />)
+    await userEvent.selectOptions(screen.getByLabelText(/field of study/i), 'Social Sciences')
+    await userEvent.type(screen.getByLabelText(/course of study/i), 'Psychology')
+    // Override: a Psychology student doing a computational project
+    await userEvent.click(screen.getByRole('radio', { name: /Computing/i }))
+    expect(useAppStore.getState().project.track).toBe('computing-engineering')
+  })
 })

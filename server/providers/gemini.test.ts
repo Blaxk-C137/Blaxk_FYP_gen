@@ -92,3 +92,15 @@ describe('gemini adapter', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal)
   })
 })
+
+describe('gemini adapter temperature', () => {
+  it('sends generationConfig.temperature when provided and omits it when not', async () => {
+    fetchMock.mockResolvedValueOnce(geminiStream(['ok']))
+    for await (const t of gemini.stream({ apiKey: 'k', system: 's', prompt: 'p', temperature: 0.5 })) void t
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body).generationConfig.temperature).toBe(0.5)
+
+    fetchMock.mockResolvedValueOnce(geminiStream(['ok']))
+    for await (const t of gemini.stream({ apiKey: 'k', system: 's', prompt: 'p' })) void t
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body).generationConfig).toBeUndefined()
+  })
+})

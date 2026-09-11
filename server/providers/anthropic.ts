@@ -22,7 +22,7 @@ export const anthropic: AIProvider = {
     return { ok: false, error: body.error?.message ?? `HTTP ${res.status}` }
   },
 
-  async *stream({ apiKey, model, system, prompt }) {
+  async *stream({ apiKey, model, system, prompt, temperature }) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -35,6 +35,7 @@ export const anthropic: AIProvider = {
         system,
         stream: true,
         max_tokens: 8192,
+        ...(temperature !== undefined ? { temperature } : {}),
         messages: [{ role: 'user', content: prompt }],
       }),
     })
