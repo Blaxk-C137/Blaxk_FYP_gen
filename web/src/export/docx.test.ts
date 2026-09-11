@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import JSZip from 'jszip'
 import { buildDocx, referencesSection, REFERENCES_LABEL } from './docx'
+import { renderChartPng } from './chart'
 import type { Chapter, ProjectInfo } from '../state/store'
+
+// jsdom cannot rasterize, so the renderer always returns null there; mocking
+// keeps that default and lets specific tests opt into the embedded-image path.
+vi.mock('./chart', () => ({ renderChartPng: vi.fn(() => null) }))
+const mockedRender = vi.mocked(renderChartPng)
 
 const project: ProjectInfo = {
   topic: 'IoT-based theft detection', studentName: 'Aisha Musa', matric: 'ENG/21/10345',
@@ -110,5 +116,93 @@ describe('referencesSection', () => {
     expect((refs.match(/Doe, J\. \(2020\)/g) ?? []).length).toBe(1)
     expect(refs.indexOf('Adeyemi')).toBeLessThan(refs.indexOf('Doe'))
     expect(refs).toContain(REFERENCES_LABEL)
+  })
+})
+
+describe('buildDocx markdown rendering', () => {
+  it('renders inline bold/italic as Word formatting, not literal markdown', async () => {
+    const ch: Chapter[] = [{
+      number: 1, title: 'INTRODUCTION', status: 'done', sections: [],
+      text: 'CHAPTER ONE\nThis is **important** and *key*.',
+    }]
+    const blob = await buildDocx(project, ch, 'Abs.', [])
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    const doc = await zip.file('word/document.xml')!.async('string')
+    expect(doc).toContain('<w:b/>')
+    expect(doc).toContain('<w:i/>')
+    expect(doc).toContain('important')
+    expect(doc).not.toContain('**important**')
+    expect(doc).not.toContain('*key*')
+  })
+
+  it('renders a pipe table as a real Word table', async () => {
+    const ch: Chapter[] = [{
+      number: 4, title: 'RESULTS', status: 'done', sections: [],
+      text: 'CHAPTER FOUR\n| Model | F1 |\n| --- | --- |\n| BERT | 0.83 |\n| SVM | 0.70 |',
+    }]
+    const blob = await buildDocx(project, ch, 'Abs.', [])
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    const doc = await zip.file('word/document.xml')!.async('string')
+    expect(doc).toContain('<w:tbl>')
+    expect(doc).toContain('Model')
+    expect(doc).toContain('BERT')
+    expect(doc).toContain('0.83')
+  })
+
+  it('renders bullet and numbered lists with Word numbering', async () => {
+    const ch: Chapter[] = [{
+      number: 3, title: 'METHODOLOGY', status: 'done', sections: [],
+      text: 'CHAPTER THREE\n- first aim\n- second aim\n\n1. collect data\n2. analyze data',
+    }]
+    const blob = await buildDocx(project, ch, 'Abs.', [])
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    const doc = await zip.file('word/document.xml')!.async('string')
+    expect(doc).toContain('<w:numPr>')
+    expect(doc).toContain('collect data')
+    expect(doc).not.toContain('- first aim')
+    expect(doc).not.toContain('1. collect data')
+  })
+
+  it('embeds a chart as a PNG image with a numbered caption when rendering succeeds', async () => {
+    mockedRender.mockReturnValueOnce('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==')
+    const ch: Chapter[] = [{
+      number: 4, title: 'RESULTS', status: 'done', sections: [],
+      text: 'CHAPTER FOUR\n```chart\n{"type":"bar","title":"Distribution","data":{"A":3,"B":5}}\n```',
+    }]
+    const blob = await buildDocx(project, ch, 'Abs.', [])
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    const doc = await zip.file('word/document.xml')!.async('string')
+    expect(doc).toContain('<w:drawing>')
+    expect(doc).toContain('Figure 4.1')
+    expect(doc).toContain('Distribution')
+    const media = Object.keys(zip.files).filter((f) => f.startsWith('word/media/'))
+    expect(media.length).toBeGreaterThanOrEqual(1)
+    expect(mockedRender).toHaveBeenCalledWith({ type: 'bar', title: 'Distribution', data: { A: 3, B: 5 } })
+  })
+
+  it('falls back to a placeholder when the chart cannot be rendered', async () => {
+    const ch: Chapter[] = [{
+      number: 4, title: 'RESULTS', status: 'done', sections: [],
+      text: 'CHAPTER FOUR\n```chart\n{"type":"bar","title":"Distribution","data":{"A":3,"B":5}}\n```',
+    }]
+    const blob = await buildDocx(project, ch, 'Abs.', []) // mocked renderer returns null
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    const doc = await zip.file('word/document.xml')!.async('string')
+    expect(doc).not.toContain('<w:drawing>')
+    expect(doc).toContain('INSERT CHART HERE')
+    expect(doc).toContain('Figure 4.1')
+  })
+
+  it('renders figure blocks as captioned insert-here placeholders', async () => {
+    const ch: Chapter[] = [{
+      number: 3, title: 'METHODOLOGY', status: 'done', sections: [],
+      text: 'CHAPTER THREE\n```figure\nSystem architecture: three tiers connected by REST.\n```',
+    }]
+    const blob = await buildDocx(project, ch, 'Abs.', [])
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    const doc = await zip.file('word/document.xml')!.async('string')
+    expect(doc).toContain('INSERT FIGURE HERE')
+    expect(doc).toContain('System architecture: three tiers connected by REST.')
+    expect(doc).toContain('Figure 3.1')
   })
 })

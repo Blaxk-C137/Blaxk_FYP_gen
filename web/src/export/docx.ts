@@ -1,8 +1,12 @@
 import {
-  AlignmentType, Document, Footer, HeadingLevel, NumberFormat, PageNumber,
-  Packer, Paragraph, TableOfContents, TextRun,
+  AlignmentType, Document, Footer, HeadingLevel, ImageRun, LevelFormat,
+  NumberFormat, PageNumber, Packer, Paragraph, Table, TableCell, TableRow,
+  TableOfContents, TextRun, WidthType,
 } from 'docx'
 import type { Chapter, ProjectInfo } from '../state/store'
+import { parseBlocks, parseInline } from './markdown'
+import type { Block, Run } from './markdown'
+import { renderChartPng } from './chart'
 
 export const REFERENCES_LABEL = 'AI-generated references — verify before submission.'
 const NO_REFERENCES_PLACEHOLDER =
@@ -28,6 +32,100 @@ const body = (text: string, opts: { bold?: boolean; heading?: (typeof HeadingLev
     spacing: { line: 480 }, // double spacing
     children: [new TextRun({ text, bold: opts.bold, font: 'Times New Roman', size: 24 })], // 12pt = 24 half-points
   })
+
+/** Paragraph built from markdown runs (bold/italic become Word formatting). */
+const bodyRuns = (runs: Run[]) =>
+  new Paragraph({
+    alignment: AlignmentType.JUSTIFIED,
+    spacing: { line: 480 },
+    children: runs.map((r) =>
+      new TextRun({ text: r.text, bold: r.bold, italics: r.italic, font: 'Times New Roman', size: 24 })),
+  })
+
+const cell = (text: string, bold = false) =>
+  new TableCell({
+    children: [new Paragraph({
+      children: [new TextRun({ text, bold, font: 'Times New Roman', size: 24 })],
+    })],
+  })
+
+/** Markdown pipe table → real Word table (header row bold). */
+function markdownTable(block: Extract<Block, { kind: 'table' }>): Table {
+  const width = block.header.length
+  const rows = block.rows.map((r) => {
+    const padded = [...r]
+    while (padded.length < width) padded.push('')
+    return new TableRow({ children: padded.slice(0, width).map((c) => cell(c)) })
+  })
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [new TableRow({ tableHeader: true, children: block.header.map((h) => cell(h, true)) }), ...rows],
+  })
+}
+
+/** Chart PNG canvas is 900×520; scale to a 6.5"-wide friendly size for Word. */
+const CHART_W = 550
+const CHART_H = Math.round((CHART_W * 520) / 900)
+
+/**
+ * Renders one parsed chapter-text block as Word children (paragraphs or a
+ * table). Figures are captioned per chapter (Figure 4.1 style).
+ */
+function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: number): (Paragraph | Table)[] {
+  switch (block.kind) {
+    case 'chapter':
+    case 'section':
+    case 'para':
+      return [block.kind === 'para'
+        ? bodyRuns(block.runs)
+        : body(block.text, {
+            bold: true,
+            heading: block.kind === 'chapter' ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2,
+            align: AlignmentType.LEFT,
+          })]
+    case 'list':
+      return block.items.map((item) =>
+        new Paragraph({
+          spacing: { line: 480 },
+          ...(block.ordered
+            ? { numbering: { reference: 'fyp-ordered', level: 0 } }
+            : { bullet: { level: 0 } }),
+          children: parseInline(item).map((r) =>
+            new TextRun({ text: r.text, bold: r.bold, italics: r.italic, font: 'Times New Roman', size: 24 })),
+        }))
+    case 'table':
+      return [markdownTable(block)]
+    case 'chart': {
+      const out: (Paragraph | Table)[] = []
+      const dataUrl = renderChartPng(block.chart)
+      if (dataUrl) {
+        const base64 = dataUrl.split(',')[1] ?? ''
+        out.push(new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new ImageRun({
+            type: 'png',
+            data: base64,
+            transformation: { width: CHART_W, height: CHART_H },
+          })],
+        }))
+      } else {
+        // No canvas (or bad spec): visible placeholder, never raw JSON.
+        out.push(body(
+          `[INSERT CHART HERE — create this chart ("${block.chart.title ?? 'chart'}") from your real data]`,
+          { align: AlignmentType.CENTER }
+        ))
+      }
+      out.push(body(`Figure ${chapterNumber}.${figureNo}: ${block.chart.title ?? 'Chart'}`, { align: AlignmentType.CENTER }))
+      return out
+    }
+    case 'figure': {
+      return [
+        body('[INSERT FIGURE HERE]', { bold: true, align: AlignmentType.CENTER }),
+        body(`Figure ${chapterNumber}.${figureNo}: ${block.description}`, { align: AlignmentType.CENTER }),
+      ]
+    }
+  }
+}
 
 // 1-inch margins.
 const PAGE = { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } }
@@ -85,24 +183,22 @@ export async function buildDocx(
   }))
 
   // ---- Body section: chapters (+ appendix), references (Arabic, restart at 1) ----
-  const bodyChildren: Paragraph[] = []
+  const bodyChildren: (Paragraph | Table)[] = []
   for (const ch of chapters) {
     if (!ch.text) continue
-    let firstHeading = true
-    for (const line of ch.text.split('\n')) {
-      const t = line.trim()
-      if (!t) continue
-      if (/^CHAPTER\s+/i.test(t)) {
-        bodyChildren.push(body(t.toUpperCase(), { bold: true, heading: HeadingLevel.HEADING_1, align: AlignmentType.LEFT, pageBreakBefore: true }))
-        firstHeading = false
-      } else if (/^APPENDIX/i.test(t)) {
-        bodyChildren.push(body(t.toUpperCase(), { bold: true, heading: HeadingLevel.HEADING_1, align: AlignmentType.LEFT, pageBreakBefore: firstHeading }))
-        firstHeading = false
-      } else if (/^\d+\.\d+/.test(t)) {
-        bodyChildren.push(body(t, { heading: HeadingLevel.HEADING_2, align: AlignmentType.LEFT }))
-      } else {
-        bodyChildren.push(body(t))
+    let figureNo = 0
+    for (const block of parseBlocks(ch.text)) {
+      if (block.kind === 'chapter') {
+        bodyChildren.push(body(block.text, {
+          bold: true,
+          heading: HeadingLevel.HEADING_1,
+          align: AlignmentType.LEFT,
+          pageBreakBefore: true,
+        }))
+        continue
       }
+      if (block.kind === 'chart' || block.kind === 'figure') figureNo++
+      bodyChildren.push(...chapterBlockChildren(block, ch.number, figureNo))
     }
   }
 
@@ -116,6 +212,18 @@ export async function buildDocx(
   const doc = new Document({
     styles: { default: { document: { run: { font: 'Times New Roman', size: 24 } } } },
     features: { updateFields: true }, // Word offers to refresh the TOC field on open
+    numbering: {
+      config: [{
+        reference: 'fyp-ordered',
+        levels: [{
+          level: 0,
+          format: LevelFormat.DECIMAL,
+          text: '%1.',
+          alignment: AlignmentType.START,
+          style: { paragraph: { indent: { left: 720, hanging: 360 } } },
+        }],
+      }],
+    },
     sections: [
       {
         // NB: this docx version reads pageNumbers from inside `page`
