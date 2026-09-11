@@ -89,6 +89,23 @@ describe('buildDocx', () => {
     expect((doc.match(/<w:pageBreakBefore\/>/g) ?? []).length).toBeGreaterThanOrEqual(2)
   })
 
+  it('gives cover page, abstract, TOC, every chapter, appendix, and references their own page', async () => {
+    const blob = await buildDocx(project, chapters, 'An abstract.', references)
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    const doc = await zip.file('word/document.xml')!.async('string')
+    // ABSTRACT + TOC (prelim), CHAPTER ONE + CHAPTER TWO + APPENDIX (body),
+    // REFERENCES — each forced onto a fresh page.
+    expect((doc.match(/<w:pageBreakBefore\/>/g) ?? []).length).toBe(6)
+    // each major heading paragraph carries the break
+    for (const h of ['ABSTRACT', 'TABLE OF CONTENTS', 'CHAPTER ONE', 'CHAPTER TWO', 'APPENDIX: QUESTIONNAIRE', 'REFERENCES']) {
+      const idx = doc.indexOf(`>${h}<`)
+      expect(idx).toBeGreaterThan(-1)
+      const pPrStart = doc.lastIndexOf('<w:pPr>', idx)
+      const pPrEnd = doc.indexOf('</w:pPr>', idx)
+      expect(doc.slice(pPrStart, pPrEnd)).toContain('<w:pageBreakBefore/>')
+    }
+  })
+
   it('renders a single deduplicated, alphabetized REFERENCES section at the end', async () => {
     const blob = await buildDocx(project, chapters, 'An abstract.', references)
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
