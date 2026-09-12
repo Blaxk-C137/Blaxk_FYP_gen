@@ -32,3 +32,17 @@ describe('store', () => {
     expect(localStorage.getItem('fypgen-state')).toContain('gemini')
   })
 })
+
+describe('slideTheme', () => {
+  it('defaults to navy and setSlideTheme updates it', () => {
+    expect(useAppStore.getState().slideTheme).toBe('navy')
+    useAppStore.getState().setSlideTheme('forest')
+    expect(useAppStore.getState().slideTheme).toBe('forest')
+  })
+
+  it('survives reset — theme is a preference, not project data', () => {
+    useAppStore.getState().setSlideTheme('slate')
+    useAppStore.getState().reset()
+    expect(useAppStore.getState().slideTheme).toBe('slate')
+  })
+})

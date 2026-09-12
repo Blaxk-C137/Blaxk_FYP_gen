@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ProviderId } from '@shared/constants'
 import type { TrackId } from '../ai/tracks'
+import type { ThemeId } from '../export/themes'
 
 export interface Settings { provider: ProviderId; apiKey: string; model?: string }
 export type LengthPreset = 'compact' | 'standard' | 'detailed'
@@ -40,6 +41,7 @@ interface AppState {
   chapters: Chapter[]
   abstract: string
   references: string[]
+  slideTheme: ThemeId
   setSettings: (s: Settings) => void
   setProject: (p: Partial<ProjectInfo>) => void
   setOutline: (chapters: Chapter[], abstract: string) => void
@@ -47,6 +49,7 @@ interface AppState {
   updateChapter: (number: number, patch: Partial<Chapter>) => void
   appendChapterText: (number: number, chunk: string) => void
   setReferences: (refs: string[]) => void
+  setSlideTheme: (t: ThemeId) => void
   reset: () => void
 }
 
@@ -58,6 +61,7 @@ export const useAppStore = create<AppState>()(
       chapters: initialChapterState(),
       abstract: '',
       references: [],
+      slideTheme: 'navy',
       setSettings: (s) => set({ settings: s }),
       setProject: (p) => set((st) => ({ project: { ...st.project, ...p } })),
       setOutline: (chapters, abstract) => set({ chapters, abstract }),
@@ -71,6 +75,7 @@ export const useAppStore = create<AppState>()(
           chapters: st.chapters.map((c) => (c.number === number ? { ...c, text: c.text + chunk } : c)),
         })),
       setReferences: (refs) => set({ references: refs }),
+      setSlideTheme: (t) => set({ slideTheme: t }),
       reset: () =>
         set({ project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '', references: [] }),
     }),
