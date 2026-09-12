@@ -487,6 +487,52 @@ pre.qa {
   margin: 0;
 }
 
+/* ---------- export: slide theme picker ---------- */
+
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+@media (max-width: 520px) {
+  .theme-picker { grid-template-columns: repeat(2, 1fr); }
+}
+
+.theme-opt {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.theme-opt.on { border-color: var(--green); }
+
+.tswatch {
+  display: flex;
+  height: 34px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.tswatch span:first-child { flex: 2; }
+.tswatch span:last-child { flex: 1; }
+
+.tname {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.theme-opt.on .tname { color: var(--green-ink); }
+
+.fallback-row { display: flex; gap: 1rem; margin-top: 0.4rem; }
+
 /* ---------- sticky footer action ---------- */
 
 .actions-row {
