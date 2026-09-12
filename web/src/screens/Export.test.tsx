@@ -11,7 +11,10 @@ vi.mock('../export/docx', async (orig) => ({
   ...(await orig<typeof import('../export/docx')>()),
   buildDocx: vi.fn().mockResolvedValue(new Blob(['x'])),
 }))
-vi.mock('../export/pptx', () => ({ buildPptx: vi.fn().mockResolvedValue(new Blob(['y'])) }))
+vi.mock('../export/pptx', () => ({
+  buildPptx: vi.fn().mockResolvedValue(new Blob(['y'])),
+  slideContentFromChapters: vi.fn().mockReturnValue({ outline: [], bg: [], prob: [], gen_obj: '', spec_obj: [], scope_pts: [], sig_pts: [], method: [], findings: [], discuss: [], conc_pts: [], recs: [] }),
+}))
 
 import { downloadBlob } from '../export/download'
 

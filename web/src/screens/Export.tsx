@@ -4,7 +4,7 @@ import { generateStream } from '../api'
 import { systemPrompt, defenseQuestionsPrompt } from '../prompts'
 import { trackFor } from '../ai/tracks'
 import { buildDocx } from '../export/docx'
-import { buildPptx } from '../export/pptx'
+import { buildPptx, slideContentFromChapters } from '../export/pptx'
 import { downloadBlob } from '../export/download'
 
 function slug(topic: string): string {
@@ -43,9 +43,9 @@ export function Export() {
           settings, systemPrompt(track), defenseQuestionsPrompt(project, chapters), () => {}
         )
         setDefenseQa(qa)
-        downloadBlob(await buildPptx(project, chapters, qa), `${slug(project.topic)}-defense.pptx`)
+        downloadBlob(await buildPptx(project, chapters, qa, slideContentFromChapters(chapters), useAppStore.getState().slideTheme), `${slug(project.topic)}-defense.pptx`)
       } else {
-        downloadBlob(await buildPptx(project, chapters, defenseQa), `${slug(project.topic)}-defense.pptx`)
+        downloadBlob(await buildPptx(project, chapters, defenseQa, slideContentFromChapters(chapters), useAppStore.getState().slideTheme), `${slug(project.topic)}-defense.pptx`)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed')
