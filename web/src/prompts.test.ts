@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { systemPrompt, outlinePrompt, chapterPrompt, defenseQuestionsPrompt } from './prompts'
+import { systemPrompt, outlinePrompt, chapterPrompt, defenseQuestionsPrompt, slidesPrompt } from './prompts'
 import { EMPTY_PROJECT, initialChapterState } from './state/store'
 import { TRACKS } from './ai/tracks'
 
@@ -50,5 +50,52 @@ describe('prompts', () => {
     const p = defenseQuestionsPrompt(project, initialChapterState())
     expect(p).toContain('defense questions')
     expect(p).toContain('CHAPTER FIVE')
+  })
+})
+
+describe('slidesPrompt', () => {
+  const project = {
+    ...EMPTY_PROJECT,
+    topic: 'AI-based news bias detection', studentName: 'Francis Eboh John',
+    matric: 'ENG/24/MCT/0029', university: 'Bayero University Kano',
+    department: 'MECHATRONICS', supervisor: 'John Syzn', degree: 'B.Eng', session: '2026',
+  }
+
+  const longBody = Array.from({ length: 400 }, (_, i) => `word${i}`).join(' ')
+  const chapters = [
+    {
+      number: 1, title: 'INTRODUCTION', status: 'done' as const,
+      sections: [
+        { heading: 'Background of the Study', description: 'why it matters' },
+        { heading: 'Objectives of the Study', description: 'goals' },
+      ],
+      text: `CHAPTER ONE\n1.1 Background of the Study\n${longBody}\n1.2 Objectives of the Study\nTo detect bias.`,
+    },
+  ]
+
+  it('carries project fields, chapter sections, and the exact JSON shape', () => {
+    const p = slidesPrompt(project, chapters)
+    expect(p).toContain('AI-based news bias detection')
+    expect(p).toContain('Bayero University Kano')
+    expect(p).toContain('Background of the Study')
+    expect(p).toContain('word199')          // first 200 words of a section body survive
+    expect(p).not.toContain('word350')      // …but the condense cap holds
+    expect(p).toContain('"gen_obj"')
+    expect(p).toContain('"spec_obj"')
+    expect(p).toContain('"method"')
+    expect(p).toContain('```json')
+    expect(p).toContain('Max 12 words per bullet')
+    expect(p).toContain('do not invent')
+  })
+
+  it('falls back to the section description when a heading has no body text', () => {
+    const thin = [{
+      number: 2, title: 'LITERATURE REVIEW', status: 'pending' as const,
+      sections: [{ heading: 'Conceptual Framework', description: 'defines the concepts' }],
+      text: '',
+    }]
+    const p = slidesPrompt(project, thin)
+    expect(p).toContain('LITERATURE REVIEW')
+    expect(p).toContain('defines the concepts')
   })
 })

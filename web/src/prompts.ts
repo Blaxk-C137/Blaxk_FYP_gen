@@ -165,3 +165,78 @@ A: suggested answer
 
 Plain text only.`
 }
+
+// ---------------------------------------------------------------------------
+// Defense slides — condense chapters into prompt-ready text and demand the
+// strict slide-content JSON (spec: docs/superpowers/specs/2026-09-12-defense-slides-design.md)
+// ---------------------------------------------------------------------------
+
+/** Chapter bodies condensed for the slides prompt: every section heading plus the
+ *  first 200 words of its body (or the outline description when the body is missing). */
+export function condenseChapters(chapters: Chapter[]): string {
+  return chapters
+    .filter((c) => c.text || c.sections.length)
+    .map((c) => {
+      const parts = [`CHAPTER ${c.number} — ${c.title}`]
+      // Split the body into blocks that each start with a "N.M Heading" line.
+      const blocks = c.text.split(/\n(?=\d+\.\d+)/)
+      for (const s of c.sections) {
+        const block = blocks.find((b) => b.toLowerCase().includes(s.heading.toLowerCase())) ?? ''
+        const body = block
+          .replace(/^[^\n]*\n/, '')
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 200)
+          .join(' ')
+        parts.push(`  ${s.heading}: ${body || s.description}`)
+      }
+      if (!c.sections.length) {
+        const body = c.text.trim().split(/\s+/).filter(Boolean).slice(0, 300).join(' ')
+        if (body) parts.push(`  ${body}`)
+      }
+      return parts.join('\n')
+    })
+    .join('\n\n')
+}
+
+export function slidesPrompt(project: ProjectInfo, chapters: Chapter[]): string {
+  return `Structure the defense slide content for this final year project. Condense the chapters into presentation bullets.
+
+Topic: ${project.topic}
+Student: ${project.studentName} (${project.matric})
+University: ${project.university} — Department of ${project.department}
+Degree: ${project.degree} | Supervisor: ${project.supervisor} | Session: ${project.session}
+
+CHAPTER CONTENT (condensed):
+${condenseChapters(chapters)}
+
+Rules:
+- Max 12 words per bullet. Academic Nigerian university tone.
+- Use ONLY content present in the chapters — do not invent results, metrics, or citations.
+- "outline" lists the six content-slide titles in this order: Background & Problem Statement, Objectives of the Study, Scope & Significance, Methodology, Results & Analysis, Conclusion & Recommendations.
+
+Respond with ONLY a JSON object in a fenced json code block, no other prose, in this exact shape (all fields required):
+
+\`\`\`json
+{
+  "outline": ["Background & Problem Statement", "Objectives of the Study", "Scope & Significance", "Methodology", "Results & Analysis", "Conclusion & Recommendations"],
+  "bg": ["point 1", "point 2", "point 3", "point 4"],
+  "prob": ["problem 1", "problem 2", "problem 3"],
+  "gen_obj": "To develop/design/implement... (one concise sentence)",
+  "spec_obj": ["specific obj 1", "specific obj 2", "specific obj 3", "specific obj 4", "specific obj 5"],
+  "scope_pts": ["scope 1", "scope 2", "scope 3"],
+  "sig_pts": ["sig 1", "sig 2", "sig 3", "sig 4"],
+  "method": [
+    { "title": "Research Design", "detail": "one brief line" },
+    { "title": "Data Collection", "detail": "one brief line" },
+    { "title": "Development", "detail": "one brief line" },
+    { "title": "Testing & Evaluation", "detail": "one brief line" }
+  ],
+  "findings": ["finding 1", "finding 2", "finding 3", "finding 4"],
+  "discuss": ["discussion point 1", "discussion point 2", "discussion point 3"],
+  "conc_pts": ["conclusion 1", "conclusion 2", "conclusion 3"],
+  "recs": ["rec 1", "rec 2", "rec 3", "rec 4"]
+}
+\`\`\``
+}
