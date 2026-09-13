@@ -201,7 +201,7 @@ export function condenseChapters(chapters: Chapter[]): string {
 }
 
 export function slidesPrompt(project: ProjectInfo, chapters: Chapter[]): string {
-  return `Structure the defense slide content for this final year project. Condense the chapters into presentation bullets.
+  return `Structure the defense slide content for this final year project.
 
 Topic: ${project.topic}
 Student: ${project.studentName} (${project.matric})
@@ -214,29 +214,23 @@ ${condenseChapters(chapters)}
 Rules:
 - Max 12 words per bullet. Academic Nigerian university tone.
 - Use ONLY content present in the chapters — do not invent results, metrics, or citations.
-- "outline" lists the six content-slide titles in this order: Background & Problem Statement, Objectives of the Study, Scope & Significance, Methodology, Results & Analysis, Conclusion & Recommendations.
+- Every bullet must stand alone when read aloud at a defense.
+- "notes" holds the speaker notes: 60–100 words of spoken script per section, first person.
+- "images": at most 3, only for sysdesign / methodology / results, each a one-sentence description of a clean technical illustration (no text in the image).
 
-Respond with ONLY a JSON object in a fenced json code block, no other prose, in this exact shape (all fields required):
+Respond with ONLY a JSON object in a fenced json code block, no other prose, in this exact shape (all bullet arrays required, may be empty):
 
 \`\`\`json
 {
-  "outline": ["Background & Problem Statement", "Objectives of the Study", "Scope & Significance", "Methodology", "Results & Analysis", "Conclusion & Recommendations"],
-  "bg": ["point 1", "point 2", "point 3", "point 4"],
-  "prob": ["problem 1", "problem 2", "problem 3"],
-  "gen_obj": "To develop/design/implement... (one concise sentence)",
-  "spec_obj": ["specific obj 1", "specific obj 2", "specific obj 3", "specific obj 4", "specific obj 5"],
-  "scope_pts": ["scope 1", "scope 2", "scope 3"],
-  "sig_pts": ["sig 1", "sig 2", "sig 3", "sig 4"],
-  "method": [
-    { "title": "Research Design", "detail": "one brief line" },
-    { "title": "Data Collection", "detail": "one brief line" },
-    { "title": "Development", "detail": "one brief line" },
-    { "title": "Testing & Evaluation", "detail": "one brief line" }
-  ],
-  "findings": ["finding 1", "finding 2", "finding 3", "finding 4"],
-  "discuss": ["discussion point 1", "discussion point 2", "discussion point 3"],
-  "conc_pts": ["conclusion 1", "conclusion 2", "conclusion 3"],
-  "recs": ["rec 1", "rec 2", "rec 3", "rec 4"]
+  "aim": "To design/develop/implement… (one concise sentence)",
+  "bullets": {
+    "intro": ["…"], "problem": ["…"], "objectives": ["…"], "scope": ["…"],
+    "significance": ["…"], "literature": ["…"], "methodology": ["…"],
+    "sysdesign": ["…"], "implementation": ["…"], "results": ["…"],
+    "discussion": ["…"], "conclusion": ["…"]
+  },
+  "notes": { "intro": "…", "methodology": "…" },
+  "images": [{ "slide": "sysdesign", "prompt": "…" }]
 }
 \`\`\``
 }

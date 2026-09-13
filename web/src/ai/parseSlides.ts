@@ -1,51 +1,38 @@
-/** Slide-content JSON contract for the themed defense deck.
- *  Mirrors the AI response shape demanded by slidesPrompt (prompts.ts). */
+/** Slide-content v2 contract — the example deck's structure. Bullets per
+ *  section, one aim, per-slide speaker notes, and up to three image prompts.
+ *  Mirrors the JSON demanded by slidesPrompt (prompts.ts). */
 
-export interface MethodStep { title: string; detail: string }
+export type SlideKey =
+  | 'intro' | 'problem' | 'objectives' | 'scope' | 'significance' | 'literature'
+  | 'methodology' | 'sysdesign' | 'implementation' | 'results' | 'discussion'
+  | 'conclusion'
 
-export interface SlideContent {
-  outline: string[]
-  bg: string[]
-  prob: string[]
-  gen_obj: string
-  spec_obj: string[]
-  scope_pts: string[]
-  sig_pts: string[]
-  method: MethodStep[]
-  findings: string[]
-  discuss: string[]
-  conc_pts: string[]
-  recs: string[]
-}
-
-const DEFAULT_METHOD: MethodStep[] = [
-  { title: 'Research Design', detail: '' },
-  { title: 'Data Collection', detail: '' },
-  { title: 'Development', detail: '' },
-  { title: 'Testing & Evaluation', detail: '' },
+export const SLIDE_KEYS: SlideKey[] = [
+  'intro', 'problem', 'objectives', 'scope', 'significance', 'literature',
+  'methodology', 'sysdesign', 'implementation', 'results', 'discussion', 'conclusion',
 ]
 
-export const EMPTY_SLIDE_CONTENT: SlideContent = {
-  outline: [], bg: [], prob: [], gen_obj: '', spec_obj: [],
-  scope_pts: [], sig_pts: [], method: DEFAULT_METHOD,
-  findings: [], discuss: [], conc_pts: [], recs: [],
+export interface SlideContent {
+  aim: string
+  bullets: Record<SlideKey, string[]>
+  notes: Partial<Record<SlideKey, string>>
+  images: { slide: SlideKey; prompt: string }[]
 }
 
-function str(v: unknown): string {
-  return typeof v === 'string' ? v.trim() : ''
+export const EMPTY_SLIDE_CONTENT: SlideContent = {
+  aim: '',
+  bullets: Object.fromEntries(SLIDE_KEYS.map((k): [SlideKey, string[]] => [k, []])) as Record<SlideKey, string[]>,
+  notes: {},
+  images: [],
 }
+
+const BULLET_CAP = 6 // per section — more spills to (continued) slides anyway
 
 function strs(v: unknown): string[] {
   if (!Array.isArray(v)) return []
-  return v
-    .filter((x): x is string => typeof x === 'string')
-    .map((s) => s.trim())
-    .filter(Boolean)
+  return v.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean)
 }
 
-/** Parses the model's slide-content JSON, tolerating fenced code blocks and
- *  surrounding prose. Missing fields default rather than throw (a partial
- *  response still yields a deck); throws only when no candidate is usable. */
 export function parseSlides(raw: string): SlideContent {
   const candidates: string[] = []
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
@@ -57,44 +44,32 @@ export function parseSlides(raw: string): SlideContent {
 
   for (const candidate of candidates) {
     let parsed: unknown
-    try {
-      parsed = JSON.parse(candidate.trim())
-    } catch {
-      continue
-    }
+    try { parsed = JSON.parse(candidate.trim()) } catch { continue }
     if (typeof parsed !== 'object' || parsed === null) continue
     const p = parsed as Record<string, unknown>
 
-    const method = Array.isArray(p.method)
-      ? p.method
-          .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && typeof m.title === 'string')
-          .slice(0, 4)
-          .map((m) => ({ title: str(m.title), detail: str(m.detail) }))
-      : []
+    const bullets = Object.fromEntries(
+      SLIDE_KEYS.map((k) => [k, strs((p.bullets as Record<string, unknown> | undefined)?.[k]).slice(0, BULLET_CAP)])
+    ) as Record<SlideKey, string[]>
 
-    const content: SlideContent = {
-      outline: strs(p.outline),
-      bg: strs(p.bg),
-      prob: strs(p.prob),
-      gen_obj: str(p.gen_obj),
-      spec_obj: strs(p.spec_obj),
-      scope_pts: strs(p.scope_pts),
-      sig_pts: strs(p.sig_pts),
-      method: method.length ? method : DEFAULT_METHOD,
-      findings: strs(p.findings),
-      discuss: strs(p.discuss),
-      conc_pts: strs(p.conc_pts),
-      recs: strs(p.recs),
+    const notes: Partial<Record<SlideKey, string>> = {}
+    if (p.notes && typeof p.notes === 'object') {
+      for (const k of SLIDE_KEYS) {
+        const v = (p.notes as Record<string, unknown>)[k]
+        if (typeof v === 'string' && v.trim()) notes[k] = v.trim()
+      }
     }
 
-    // Usable only if at least one field carried content — otherwise try the
-    // next candidate (mirrors parseOutline's chapters?.length check).
-    const hasAnything =
-      content.gen_obj !== '' ||
-      [content.outline, content.bg, content.prob, content.spec_obj, content.scope_pts,
-        content.sig_pts, content.findings, content.discuss, content.conc_pts, content.recs]
-        .some((a) => a.length > 0)
-    if (hasAnything) return content
+    const images = (Array.isArray(p.images) ? p.images : [])
+      .filter((i): i is { slide: SlideKey; prompt: string } =>
+        !!i && typeof i === 'object' && typeof (i as Record<string, unknown>).prompt === 'string'
+        && SLIDE_KEYS.includes((i as Record<string, unknown>).slide as SlideKey))
+      .slice(0, 3)
+      .map((i) => ({ slide: i.slide, prompt: i.prompt.trim() }))
+
+    const aim = typeof p.aim === 'string' ? p.aim.trim() : ''
+    const hasAnything = aim !== '' || SLIDE_KEYS.some((k) => bullets[k].length > 0)
+    if (hasAnything) return { aim, bullets, notes, images }
   }
   throw new Error('Model did not return valid JSON')
 }

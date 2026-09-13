@@ -13,7 +13,15 @@ vi.mock('../export/docx', async (orig) => ({
 }))
 vi.mock('../export/pptx', () => ({
   buildPptx: vi.fn().mockResolvedValue(new Blob(['y'])),
-  slideContentFromChapters: vi.fn().mockReturnValue({ outline: [], bg: [], prob: [], gen_obj: '', spec_obj: [], scope_pts: [], sig_pts: [], method: [], findings: [], discuss: [], conc_pts: [], recs: [] }),
+  slideContentFromChapters: vi.fn().mockReturnValue({
+    aim: 'Objectives of the Study',
+    bullets: {
+      intro: [], problem: [], objectives: [], scope: [], significance: [], literature: [],
+      methodology: [], sysdesign: [], implementation: [], results: [], discussion: [], conclusion: [],
+    },
+    notes: {},
+    images: [],
+  }),
 }))
 
 import { downloadBlob } from '../export/download'
@@ -21,13 +29,15 @@ import { generateStream, resolveReferences } from '../api'
 import { buildPptx, slideContentFromChapters } from '../export/pptx'
 
 const slideJson = JSON.stringify({
-  outline: ['Background & Problem Statement', 'Objectives of the Study', 'Scope & Significance', 'Methodology', 'Results & Analysis', 'Conclusion & Recommendations'],
-  bg: ['Theft is common'], prob: ['Watchmen unreliable'],
-  gen_obj: 'To detect theft.', spec_obj: ['Sense motion'],
-  scope_pts: ['Two labs'], sig_pts: ['Protects assets'],
-  method: [{ title: 'Research Design', detail: 'Prototype.' }],
-  findings: ['98% detection'], discuss: ['Cheap'],
-  conc_pts: ['It works'], recs: ['Scale up'],
+  aim: 'To detect theft.',
+  bullets: {
+    intro: ['Theft is common'], problem: ['Watchmen unreliable'], objectives: ['Sense motion'],
+    scope: ['Two labs'], significance: ['Protects assets'], literature: ['IoT sensing is mature'],
+    methodology: ['Prototype it'], sysdesign: ['PIR sensors'], implementation: ['Firmware'],
+    results: ['98% detection'], discussion: ['Cheap'], conclusion: ['It works'],
+  },
+  notes: {},
+  images: [],
 })
 
 beforeEach(() => {
@@ -77,7 +87,7 @@ describe('Export screen — defense slides', () => {
     expect((downloadBlob as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatch(/-defense\.pptx$/)
     const [, , qa, content, theme] = (buildPptx as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(qa).toContain('Q: Why?')
-    expect(content.gen_obj).toBe('To detect theft.')
+    expect(content.aim).toBe('To detect theft.')
     expect(theme).toBe('navy')
   })
 
