@@ -29,4 +29,9 @@ describe('extractCitations', () => {
     expect(extractCitations('In 2020 the market grew (see Appendix). Data (NBS, 2021) says otherwise.'))
       .toEqual(['NBS, 2021'])
   })
+
+  it('keeps first-appearance order when a narrative citation precedes a parenthetical one', () => {
+    const text = 'Bello and Musa (2022) said growth slowed; later work (Okonkwo, 2019) showed the opposite.'
+    expect(extractCitations(text)).toEqual(['Bello & Musa, 2022', 'Okonkwo, 2019'])
+  })
 })

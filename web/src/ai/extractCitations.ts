@@ -16,19 +16,25 @@ function canonical(raw: string): string | null {
 }
 
 export function extractCitations(text: string): string[] {
-  const keys: string[] = []
-  const add = (k: string | null) => {
-    if (k && !keys.includes(k)) keys.push(k)
-  }
+  // Collect raw citation fragments with their match index, so both forms can be
+  // merged in true first-appearance order regardless of which pass finds them.
+  const hits: { index: number; raw: string }[] = []
   // Parenthetical: (Author, 2020; Author & Author, 2021) — must contain a year.
   for (const m of text.matchAll(/\(([^()]*\b\d{4}[^()]*)\)/g)) {
-    for (const part of m[1].split(';')) add(canonical(part))
+    for (const part of m[1].split(';')) hits.push({ index: m.index, raw: part })
   }
   // Narrative: Author (2020) / Author et al. (2020) / Author and Author (2020)
   for (const m of text.matchAll(
     /([A-Z][A-Za-z'’-]+(?:\s+(?:et al\.|and\s+[A-Z][A-Za-z'’-]+))?)\s+\((\d{4})\)/g
   )) {
-    add(canonical(`${m[1]}, ${m[2]}`))
+    hits.push({ index: m.index, raw: `${m[1]}, ${m[2]}` })
+  }
+  hits.sort((a, b) => a.index - b.index)
+
+  const keys: string[] = []
+  for (const hit of hits) {
+    const k = canonical(hit.raw)
+    if (k && !keys.includes(k)) keys.push(k)
   }
   return keys
 }
