@@ -9,6 +9,12 @@ export const DEFAULT_MODELS: Record<ProviderId, string> = {
   anthropic: 'claude-haiku-4-5-20251001',
 }
 
+/** One structured citation from the AI; the server formats + verifies it. */
+export interface ReferenceInput {
+  key: string; authors: string; year: string; title: string
+  container?: string; volume?: string; issue?: string; pages?: string; doi?: string
+}
+
 export interface ProviderInfo {
   label: string
   keyUrl: string

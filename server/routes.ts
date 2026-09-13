@@ -5,6 +5,8 @@ import { PROVIDERS } from '../shared/constants.js'
 import type { ProviderId } from '../shared/constants.js'
 import { configureNetworking, describeNetworkError, hasNetworkCause, logNetworkError } from './net.js'
 import { findUniversityLogo } from './logo.js'
+import { resolveCitations } from './citations.js'
+import type { ReferenceInput } from '../shared/constants.js'
 
 interface GenerateBody {
   provider?: string
@@ -140,6 +142,21 @@ export function registerAIRoutes(app: Hono) {
       return c.json(await findUniversityLogo(university))
     } catch {
       return c.json({ logo: null })
+    }
+  })
+
+  app.post('/api/citations', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { entries?: unknown }
+    if (!Array.isArray(body.entries)) return c.json({ error: 'entries must be an array' }, 400)
+    const entries = body.entries as ReferenceInput[]
+    if (entries.length === 0 || entries.length > 100) return c.json({ error: 'entries must contain 1–100 items' }, 400)
+    if (entries.some((e) => !e || typeof e !== 'object' || typeof e.title !== 'string')) {
+      return c.json({ error: 'each entry needs at least a title' }, 400)
+    }
+    try {
+      return c.json({ results: await resolveCitations(entries) })
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : 'Citation resolution failed' }, 502)
     }
   })
 }
