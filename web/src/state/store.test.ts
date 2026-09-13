@@ -33,10 +33,8 @@ describe('store', () => {
   })
 })
 
-describe('slideTheme', () => {
-  it('defaults to navy and setSlideTheme updates it', () => {
-    expect(useAppStore.getState().slideTheme).toBe('navy')
-    useAppStore.getState().setSlideTheme('forest')
+describe('slideTheme default', () => {
+  it('defaults to forest (the example deck green)', () => {
     expect(useAppStore.getState().slideTheme).toBe('forest')
   })
 

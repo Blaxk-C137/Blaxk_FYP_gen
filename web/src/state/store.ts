@@ -63,7 +63,7 @@ export const useAppStore = create<AppState>()(
       chapters: initialChapterState(),
       abstract: '',
       references: [],
-      slideTheme: 'navy',
+      slideTheme: 'forest',
       setSettings: (s) => set({ settings: s }),
       setProject: (p) => set((st) => ({ project: { ...st.project, ...p } })),
       setOutline: (chapters, abstract) => set({ chapters, abstract }),
