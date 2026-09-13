@@ -48,26 +48,37 @@ describe('reference/image/logo clients', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('resolveReferences posts entries and maps results', async () => {
-    const mock = vi.fn(async (_url: unknown, _init: { body: string }) => new Response(JSON.stringify({
-      results: [{ input: {}, apa: 'A (2020). T.', verified: true, doi: '10.1/x' }],
+    const mock = vi.fn(async (_url: unknown, _init: { method: string; body: string }) => new Response(JSON.stringify({
+      results: [{ input: { key: 'Doe, 2020' }, apa: 'Doe, J. (2020). T.', verified: true, doi: '10.1/x' }],
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', mock)
-    const out = await resolveReferences([{ key: 'A, 2020', authors: 'A, B.', year: '2020', title: 'T' }])
-    expect(out).toEqual([{ apa: 'A (2020). T.', verified: true, doi: '10.1/x' }])
-    const [, init] = mock.mock.calls[0]!
+    const out = await resolveReferences([{ key: 'Doe, 2020', authors: 'Doe, J.', year: '2020', title: 'T' }])
+    expect(out).toEqual([{ key: 'Doe, 2020', apa: 'Doe, J. (2020). T.', verified: true, doi: '10.1/x' }])
+    const [url, init] = mock.mock.calls[0]!
+    expect(url).toBe('/api/citations')
+    expect(init.method).toBe('POST')
     expect(JSON.parse(init.body).entries[0].title).toBe('T')
   })
 
   it('generateImage returns base64 or null on failure', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ base64: 'aGk=' }), { status: 200, headers: { 'content-type': 'application/json' } })))
+    const mock = vi.fn(async (_url: unknown, _init: { method: string; body: string }) => new Response(JSON.stringify({ base64: 'aGk=' }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', mock)
     expect(await generateImage({ provider: 'gemini', apiKey: 'k' }, 'a prompt')).toBe('aGk=')
+    const [url, init] = mock.mock.calls[0]!
+    expect(url).toBe('/api/generate-image')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ provider: 'gemini', apiKey: 'k', prompt: 'a prompt' })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'nope' }), { status: 501 })))
     expect(await generateImage({ provider: 'gemini', apiKey: 'k' }, 'a prompt')).toBeNull()
   })
 
   it('fetchLogo maps the route payload, null on any failure', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ logo: { base64: 'Yg==', mime: 'image/png' } }), { status: 200, headers: { 'content-type': 'application/json' } })))
+    const mock = vi.fn(async (_url: unknown, _init: unknown) => new Response(JSON.stringify({ logo: { base64: 'Yg==', mime: 'image/png' } }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', mock)
     expect(await fetchLogo('Bayero University Kano')).toEqual({ base64: 'Yg==', mime: 'image/png' })
+    const [url, init] = mock.mock.calls[0]!
+    expect(url).toBe(`/api/logo?university=${encodeURIComponent('Bayero University Kano')}`)
+    expect(init).toBeUndefined() // plain GET — no method/body overrides
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed') }))
     expect(await fetchLogo('X')).toBeNull()
   })

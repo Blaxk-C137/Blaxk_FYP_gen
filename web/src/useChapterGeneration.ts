@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useAppStore } from './state/store'
+import type { ReferenceEntry } from './state/store'
 import { generateStream } from './api'
 import { systemPrompt, chapterPrompt, chapterBudget, OVERSHOOT_FACTOR, questionnairePrompt } from './prompts'
 import { trackFor } from './ai/tracks'
@@ -34,13 +35,15 @@ export function useChapterGeneration() {
     useAppStore.getState().updateChapter(number, { text: fixed.text })
     if (fixed.references.length) {
       const { references, setReferences } = useAppStore.getState()
-      const existing = new Set(references.map((r) => r.apa))
-      const merged = [...references, ...fixed.references
-        .map((r) => r.trim())
-        .filter(Boolean)
-        .filter((r) => !existing.has(r))
-        .map((r) => ({ key: '', apa: r, verified: false }))]
-      setReferences(merged)
+      const seen = new Set(references.map((r) => r.apa))
+      const appended: ReferenceEntry[] = []
+      for (const r of fixed.references) {
+        const apa = r.trim()
+        if (!apa || seen.has(apa)) continue
+        seen.add(apa)
+        appended.push({ key: '', apa, verified: false })
+      }
+      setReferences([...references, ...appended])
     }
     return fixed
   }, [])
