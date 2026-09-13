@@ -240,3 +240,28 @@ Respond with ONLY a JSON object in a fenced json code block, no other prose, in 
 }
 \`\`\``
 }
+
+// ---------------------------------------------------------------------------
+// References — turn extracted citation keys into structured entries
+// ---------------------------------------------------------------------------
+
+export function referencesPrompt(project: ProjectInfo, keys: string[]): string {
+  return `Produce full bibliographic details for every citation used in this final year project.
+
+Topic: ${project.topic}
+
+Citation keys found in the chapters (author, year):
+${keys.map((k) => `- ${k}`).join('\n')}
+
+Rules:
+- Use ONLY real published works you are genuinely certain about; never invent authors, years, journals, volumes, or DOIs — an empty field is always better than a fake one.
+- Join multiple authors with " & " like: Family, F. & Family, F.
+- If you cannot identify a real work for a key, omit that key from the response entirely.
+- "container" is the journal or book title; leave it empty for standalone works.
+
+Respond with ONLY a JSON object in a fenced json code block, no other prose, in this exact shape:
+
+\`\`\`json
+{ "entries": [ { "key": "Author, 2020", "authors": "Family, F. & Family, F.", "year": "2020", "title": "Full article or book title", "container": "Journal Name", "volume": "8", "issue": "2", "pages": "139-182", "doi": "" } ] }
+\`\`\``
+}

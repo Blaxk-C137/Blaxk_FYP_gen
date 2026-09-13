@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { systemPrompt, outlinePrompt, chapterPrompt, defenseQuestionsPrompt, slidesPrompt } from './prompts'
+import { systemPrompt, outlinePrompt, chapterPrompt, defenseQuestionsPrompt, slidesPrompt, referencesPrompt } from './prompts'
 import { EMPTY_PROJECT, initialChapterState } from './state/store'
 import { TRACKS } from './ai/tracks'
 
@@ -97,5 +97,20 @@ describe('slidesPrompt', () => {
     const p = slidesPrompt(project, thin)
     expect(p).toContain('LITERATURE REVIEW')
     expect(p).toContain('defines the concepts')
+  })
+})
+
+describe('referencesPrompt', () => {
+  it('carries the topic and every citation key, demands strict JSON', () => {
+    const p = referencesPrompt(
+      { ...EMPTY_PROJECT, topic: 'IoT theft detection' },
+      ['Okonkwo, 2019', 'Smith & Jones, 2021']
+    )
+    expect(p).toContain('IoT theft detection')
+    expect(p).toContain('Okonkwo, 2019')
+    expect(p).toContain('Smith & Jones, 2021')
+    expect(p).toContain('```json')
+    expect(p).toContain('never invent')
+    expect(p).toContain('"authors"')
   })
 })
