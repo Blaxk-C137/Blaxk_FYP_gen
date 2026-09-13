@@ -33,7 +33,10 @@ export function Export() {
     setBusy('docx')
     setError('')
     try {
-      downloadBlob(await buildDocx(project, chapters, abstract, references), `${slug(project.topic)}.docx`)
+      downloadBlob(
+        await buildDocx(project, chapters, abstract, references.map((r) => (typeof r === 'string' ? r : r.apa))),
+        `${slug(project.topic)}.docx`
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed')
     } finally {

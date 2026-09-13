@@ -46,3 +46,20 @@ describe('slideTheme', () => {
     expect(useAppStore.getState().slideTheme).toBe('slate')
   })
 })
+
+describe('references entries (v2 persist migration)', () => {
+  it('setReferences stores typed entries', () => {
+    useAppStore.getState().setReferences([
+      { key: 'A, 2020', apa: 'A (2020). Title.', verified: true, doi: '10.1/x' },
+      { key: 'B, 2021', apa: 'B (2021). Other.', verified: false },
+    ])
+    expect(useAppStore.getState().references[0]).toMatchObject({ verified: true, doi: '10.1/x' })
+    useAppStore.getState().setReferences([])
+  })
+
+  it('reset clears references', () => {
+    useAppStore.getState().setReferences([{ key: 'k', apa: 'a', verified: false }])
+    useAppStore.getState().reset()
+    expect(useAppStore.getState().references).toEqual([])
+  })
+})

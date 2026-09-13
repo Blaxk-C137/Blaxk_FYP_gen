@@ -72,6 +72,8 @@ describe('Generate screen', () => {
     expect(useAppStore.getState().chapters[0].text).toBe('CHAPTER ONE\n1.1 Background\nA study.\n')
 
     // References extracted from the first attempt landed in the store
-    expect(useAppStore.getState().references).toContain('Doe, J. (2020). A study. Journal, 1(1), 1–2.')
+    expect(useAppStore.getState().references).toContainEqual(
+      expect.objectContaining({ apa: 'Doe, J. (2020). A study. Journal, 1(1), 1–2.', verified: false })
+    )
   })
 })

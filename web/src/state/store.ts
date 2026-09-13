@@ -24,6 +24,8 @@ export const EMPTY_PROJECT: ProjectInfo = {
   department: '', supervisor: '', degree: '', session: '',
 }
 
+export interface ReferenceEntry { key: string; apa: string; verified: boolean; doi?: string }
+
 export const STANDARD_CHAPTERS = [
   'INTRODUCTION', 'LITERATURE REVIEW', 'METHODOLOGY',
   'RESULTS AND ANALYSIS', 'CONCLUSION AND RECOMMENDATIONS',
@@ -40,7 +42,7 @@ interface AppState {
   project: ProjectInfo
   chapters: Chapter[]
   abstract: string
-  references: string[]
+  references: ReferenceEntry[]
   slideTheme: ThemeId
   setSettings: (s: Settings) => void
   setProject: (p: Partial<ProjectInfo>) => void
@@ -48,7 +50,7 @@ interface AppState {
   setChapters: (chapters: Chapter[]) => void
   updateChapter: (number: number, patch: Partial<Chapter>) => void
   appendChapterText: (number: number, chunk: string) => void
-  setReferences: (refs: string[]) => void
+  setReferences: (refs: ReferenceEntry[]) => void
   setSlideTheme: (t: ThemeId) => void
   reset: () => void
 }
@@ -79,7 +81,20 @@ export const useAppStore = create<AppState>()(
       reset: () =>
         set({ project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '', references: [] }),
     }),
-    { name: 'fypgen-state' }
+    {
+      name: 'fypgen-state',
+      version: 2,
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Record<string, unknown>
+        return {
+          ...state,
+          references: Array.isArray(state.references)
+            ? (state.references as unknown[]).map((r) =>
+                typeof r === 'string' ? { key: '', apa: r, verified: false } : r)
+            : [],
+        }
+      },
+    }
   )
 )
 

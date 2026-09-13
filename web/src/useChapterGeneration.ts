@@ -34,9 +34,13 @@ export function useChapterGeneration() {
     useAppStore.getState().updateChapter(number, { text: fixed.text })
     if (fixed.references.length) {
       const { references, setReferences } = useAppStore.getState()
-      const merged = [...references, ...fixed.references]
-      const unique = Array.from(new Set(merged.map((r) => r.trim()))).filter(Boolean)
-      setReferences(unique)
+      const existing = new Set(references.map((r) => r.apa))
+      const merged = [...references, ...fixed.references
+        .map((r) => r.trim())
+        .filter(Boolean)
+        .filter((r) => !existing.has(r))
+        .map((r) => ({ key: '', apa: r, verified: false }))]
+      setReferences(merged)
     }
     return fixed
   }, [])
