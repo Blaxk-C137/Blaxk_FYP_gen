@@ -263,3 +263,23 @@ describe('buildDocx markdown rendering', () => {
     expect(doc).toContain('Figure 3.1')
   })
 })
+
+describe('figure images', () => {
+  it('embeds a generated image for figure blocks when imageFor resolves', async () => {
+    const ch = { ...chapters[0], text: 'CHAPTER ONE\n1.1 A\nText before.\n\n```figure\nBlock diagram of the system architecture\n```\n' }
+    const blob = await buildDocx(project, [ch], 'abstract', [], {
+      imageFor: async () => 'aGVsbG8=',
+    })
+    const doc = await docxXml(blob)
+    expect(doc).toContain('<w:drawing>')
+    expect(doc).toContain('Figure 1.1')
+  })
+
+  it('keeps the placeholder when imageFor returns null', async () => {
+    const ch = { ...chapters[0], text: 'CHAPTER ONE\n1.1 A\n\n```figure\nA flow diagram\n```\n' }
+    const blob = await buildDocx(project, [ch], 'abstract', [], { imageFor: async () => null })
+    const doc = await docxXml(blob)
+    expect(doc).toContain('[INSERT FIGURE HERE]')
+    expect(doc).not.toContain('<w:drawing>')
+  })
+})

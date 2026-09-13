@@ -24,6 +24,12 @@ export function referencesSection(chapters: Chapter[] = [], references: string[]
   return `${body}\n\n${REFERENCES_LABEL}`
 }
 
+/** Optional behaviours injected by callers (e.g. the Export screen). */
+export interface DocxOptions {
+  /** Returns a base64 PNG for a figure prompt, or null to keep the placeholder. */
+  imageFor?: (prompt: string) => Promise<string | null>
+}
+
 const body = (text: string, opts: { bold?: boolean; color?: string; heading?: (typeof HeadingLevel)[keyof typeof HeadingLevel]; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; pageBreakBefore?: boolean } = {}) =>
   new Paragraph({
     heading: opts.heading,
@@ -91,9 +97,14 @@ function orderedLevel() {
 /**
  * Renders one parsed chapter-text block as Word children (paragraphs or a
  * table). Figures are captioned per chapter (Figure 4.1 style). Ordered lists
- * take a per-list numbering reference so each list restarts at 1.
+ * take a per-list numbering reference so each list restarts at 1. Figure blocks
+ * look up their pre-generated image (keyed `${chapterNumber}:${blockIndex}`)
+ * and fall back to the insert-here placeholder when it is missing.
  */
-function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: number, numRef: string): (Paragraph | Table)[] {
+function chapterBlockChildren(
+  block: Block, chapterNumber: number, figureNo: number, numRef: string,
+  blockIndex: number, figureImages: Map<string, string>
+): (Paragraph | Table)[] {
   switch (block.kind) {
     case 'chapter':
     case 'section':
@@ -140,6 +151,20 @@ function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: num
       return out
     }
     case 'figure': {
+      const img = figureImages.get(`${chapterNumber}:${blockIndex}`)
+      if (img) {
+        return [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [new ImageRun({
+              type: 'png',
+              data: img,
+              transformation: { width: CHART_W, height: CHART_H },
+            })],
+          }),
+          body(`Figure ${chapterNumber}.${figureNo}: ${block.description}`, { align: AlignmentType.CENTER }),
+        ]
+      }
       return [
         attention('[INSERT FIGURE HERE]', { align: AlignmentType.CENTER }),
         body(`Figure ${chapterNumber}.${figureNo}: ${block.description}`, { align: AlignmentType.CENTER }),
@@ -179,7 +204,8 @@ export async function buildDocx(
   project: ProjectInfo,
   chapters: Chapter[],
   abstract: string,
-  references: string[] = []
+  references: string[] = [],
+  opts: DocxOptions = {}
 ): Promise<Blob> {
   // ---- Preliminary section: title page, abstract, TOC (roman numerals) ----
   const prelim: (Paragraph | TableOfContents)[] = []
@@ -204,12 +230,33 @@ export async function buildDocx(
   }))
 
   // ---- Body section: chapters (+ appendix), references (Arabic, restart at 1) ----
+  // Pre-generate figure images in parallel (cap 3) so blocks render with data.
+  const figureBlocks: { chapterNumber: number; index: number; prompt: string }[] = []
+  for (const ch of chapters) {
+    if (!ch.text) continue
+    parseBlocks(ch.text).forEach((b, i) => {
+      if (b.kind === 'figure') figureBlocks.push({ chapterNumber: ch.number, index: i, prompt: b.description })
+    })
+  }
+  const figureImages = new Map<string, string>()
+  if (opts.imageFor) {
+    for (let i = 0; i < figureBlocks.length; i += 3) {
+      const batch = figureBlocks.slice(i, i + 3)
+      const results = await Promise.all(
+        batch.map(async (f) => [`${f.chapterNumber}:${f.index}`, await opts.imageFor!(f.prompt)] as const)
+      )
+      for (const [k, v] of results) if (v) figureImages.set(k, v)
+    }
+  }
+
   const bodyChildren: (Paragraph | Table)[] = []
   let listCount = 0
   for (const ch of chapters) {
     if (!ch.text) continue
     let figureNo = 0
-    for (const block of parseBlocks(ch.text)) {
+    const blocks = parseBlocks(ch.text)
+    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      const block = blocks[blockIndex]
       if (block.kind === 'chapter') {
         bodyChildren.push(body(block.text, {
           bold: true,
@@ -223,7 +270,8 @@ export async function buildDocx(
       if (block.kind === 'chart' || block.kind === 'figure') figureNo++
       bodyChildren.push(...chapterBlockChildren(
         block, ch.number, figureNo,
-        block.kind === 'list' && block.ordered ? `fyp-ordered-${listCount}` : 'fyp-ordered'
+        block.kind === 'list' && block.ordered ? `fyp-ordered-${listCount}` : 'fyp-ordered',
+        blockIndex, figureImages
       ))
     }
   }

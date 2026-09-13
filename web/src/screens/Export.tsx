@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAppStore, useProject, useChapters, useSettings } from '../state/store'
 import type { ReferenceEntry } from '../state/store'
-import { generateStream, resolveReferences } from '../api'
+import { generateStream, generateImage, resolveReferences } from '../api'
 import { systemPrompt, defenseQuestionsPrompt, slidesPrompt, referencesPrompt } from '../prompts'
 import { trackFor } from '../ai/tracks'
 import { parseSlides } from '../ai/parseSlides'
@@ -40,7 +40,12 @@ export function Export() {
         setError(e instanceof Error ? e.message : 'Reference verification failed')
         return useAppStore.getState().references
       })
-      downloadBlob(await buildDocx(project, chapters, abstract, refs.map((r) => r.apa)), `${slug(project.topic)}.docx`)
+      downloadBlob(
+        await buildDocx(project, chapters, abstract, refs.map((r) => r.apa), {
+          imageFor: (prompt) => generateImage(settings, prompt),
+        }),
+        `${slug(project.topic)}.docx`
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed')
     } finally {
