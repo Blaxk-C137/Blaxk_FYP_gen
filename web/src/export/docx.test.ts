@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import JSZip from 'jszip'
 import { buildDocx, referencesSection, REFERENCES_LABEL } from './docx'
 import { renderChartPng } from './chart'
-import type { Chapter, ProjectInfo } from '../state/store'
+import type { Chapter, ProjectInfo, ReferenceEntry } from '../state/store'
 
 // jsdom cannot rasterize, so the renderer always returns null there; mocking
 // keeps that default and lets specific tests opt into the embedded-image path.
@@ -22,10 +22,10 @@ const chapters: Chapter[] = [
   { number: 6, title: 'QUESTIONNAIRE', status: 'done',
     sections: [], text: 'APPENDIX: QUESTIONNAIRE\nSection A: Demographics' },
 ]
-const references = [
-  'Doe, J. (2020). Sensors in Africa. Journal of Things, 5(2), 10–20.',
-  'Adeyemi, K. (2018). Campus security. Nigerian Journal of Safety, 3(1), 1–9.',
-  'Doe, J. (2020). Sensors in Africa. Journal of Things, 5(2), 10–20.', // duplicate
+const references: ReferenceEntry[] = [
+  { key: 'doe-2020', apa: 'Doe, J. (2020). Sensors in Africa. Journal of Things, 5(2), 10–20.', verified: true },
+  { key: 'adeyemi-2018', apa: 'Adeyemi, K. (2018). Campus security. Nigerian Journal of Safety, 3(1), 1–9.', verified: false },
+  { key: 'doe-2020-dup', apa: 'Doe, J. (2020). Sensors in Africa. Journal of Things, 5(2), 10–20.', verified: true }, // duplicate apa
 ]
 
 // jsdom's Blob lacks arrayBuffer(); read bytes through FileReader there.
@@ -161,6 +161,28 @@ describe('referencesSection', () => {
     expect((refs.match(/Doe, J\. \(2020\)/g) ?? []).length).toBe(1)
     expect(refs.indexOf('Adeyemi')).toBeLessThan(refs.indexOf('Doe'))
     expect(refs).toContain(REFERENCES_LABEL)
+  })
+})
+
+describe('references section from typed entries', () => {
+  it('renders APA entries alphabetized with a red [VERIFY] prefix on unverified ones', async () => {
+    const refs = [
+      { key: 'b', apa: 'Beta, B. (2021). Second.', verified: true },
+      { key: 'a', apa: 'Alpha, A. (2020). First.', verified: false },
+    ]
+    const blob = await buildDocx(project, chapters, 'abstract', refs)
+    const doc = await docxXml(blob)
+    const aIdx = doc.indexOf('Alpha, A. (2020). First.')
+    const bIdx = doc.indexOf('Beta, B. (2021). Second.')
+    expect(aIdx).toBeGreaterThan(-1)
+    expect(bIdx).toBeGreaterThan(-1)
+    expect(aIdx).toBeLessThan(bIdx) // alphabetized
+    // NB: brief asserted the literal '[VERIFY] Alpha, A. (2020). First.', but
+    // the brief's own implementation renders the prefix as its own red-bold
+    // run, so OOXML rPr XML always sits between the two text nodes and the
+    // contiguous literal never occurs. Assert run adjacency instead: the
+    // C00000 [VERIFY] run is immediately followed by the entry's run.
+    expect(doc).toMatch(/C00000(?:(?!<\/w:r>).)*?\[VERIFY\] <\/w:t><\/w:r><w:r>(?:(?!<\/w:r>).)*?Alpha, A\. \(2020\)\. First\./s)
   })
 })
 

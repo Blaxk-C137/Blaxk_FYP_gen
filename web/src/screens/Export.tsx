@@ -41,7 +41,7 @@ export function Export() {
         return useAppStore.getState().references
       })
       downloadBlob(
-        await buildDocx(project, chapters, abstract, refs.map((r) => r.apa), {
+        await buildDocx(project, chapters, abstract, refs, {
           imageFor: (prompt) => generateImage(settings, prompt),
         }),
         `${slug(project.topic)}.docx`

@@ -3,7 +3,7 @@ import {
   NumberFormat, PageNumber, Packer, Paragraph, Table, TableCell, TableRow,
   TableOfContents, TextRun, WidthType,
 } from 'docx'
-import type { Chapter, ProjectInfo } from '../state/store'
+import type { Chapter, ProjectInfo, ReferenceEntry } from '../state/store'
 import { parseBlocks, parseInline } from './markdown'
 import type { Block, Run } from './markdown'
 import { renderChartPng } from './chart'
@@ -15,14 +15,18 @@ const NO_REFERENCES_PLACEHOLDER =
   'No references were collected. Add your references here in APA 7 format.'
 
 /**
- * Composes the document references section: de-duplicated, alphabetized store
- * references (populated by Layer 2 extraction) plus the verification label.
+ * Composes the document references section from typed entries: de-duplicated,
+ * alphabetized store references (populated by Layer 2 extraction) plus the
+ * verification label. Unverified entries carry a `[VERIFY] ` prefix.
  */
-export function referencesSection(chapters: Chapter[] = [], references: string[] = []): string {
-  void chapters // kept for signature stability; references now come from the store
-  const unique = Array.from(new Set(references.map((r) => r.trim()))).filter(Boolean)
-  unique.sort((a, b) => a.localeCompare(b))
-  const body = unique.length ? unique.join('\n\n') : NO_REFERENCES_PLACEHOLDER
+export function referencesSection(_chapters: Chapter[] = [], references: ReferenceEntry[] = []): string {
+  void _chapters
+  const unique = new Map<string, ReferenceEntry>()
+  for (const r of references) if (r.apa.trim()) unique.set(r.apa.trim(), r)
+  const sorted = [...unique.values()].sort((a, b) => a.apa.localeCompare(b.apa))
+  const body = sorted.length
+    ? sorted.map((r) => `${r.verified ? '' : '[VERIFY] '}${r.apa}`).join('\n\n')
+    : NO_REFERENCES_PLACEHOLDER
   return `${body}\n\n${REFERENCES_LABEL}`
 }
 
@@ -206,7 +210,7 @@ export async function buildDocx(
   project: ProjectInfo,
   chapters: Chapter[],
   abstract: string,
-  references: string[] = [],
+  references: ReferenceEntry[] = [],
   opts: DocxOptions = {}
 ): Promise<Blob> {
   // ---- Preliminary section: title page, abstract, TOC (roman numerals) ----
@@ -282,10 +286,21 @@ export async function buildDocx(
 
   // References — always last.
   bodyChildren.push(body('REFERENCES', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, pageBreakBefore: true }))
-  for (const ref of referencesSection(chapters, references).split('\n')) {
-    const t = ref.trim()
+  for (const line of referencesSection(chapters, references).split('\n')) {
+    const t = line.trim()
+    if (!t) continue
     if (t === REFERENCES_LABEL) bodyChildren.push(attention(t, { align: AlignmentType.LEFT }))
-    else if (t) bodyChildren.push(body(t, { align: AlignmentType.LEFT }))
+    else if (t.startsWith('[VERIFY] ')) {
+      bodyChildren.push(new Paragraph({
+        alignment: AlignmentType.LEFT, spacing: { line: 480 },
+        children: [
+          new TextRun({ text: '[VERIFY] ', bold: true, color: 'C00000', font: 'Times New Roman', size: 24 }),
+          new TextRun({ text: t.slice('[VERIFY] '.length), font: 'Times New Roman', size: 24 }),
+        ],
+      }))
+    } else {
+      bodyChildren.push(body(t, { align: AlignmentType.LEFT }))
+    }
   }
 
   // Each ordered list gets its own numbering instance (fyp-ordered-1, -2, …)
@@ -318,6 +333,6 @@ export async function buildDocx(
   const blob = await Packer.toBlob(doc)
   // Cache estimated TOC entries inside the field so viewers that never update
   // fields (LibreOffice, Google Docs, previews) still show a real TOC.
-  const referencesCount = references.filter(Boolean).length
+  const referencesCount = references.filter((r) => r.apa.trim()).length
   return injectTocCache(blob, estimateTocEntries(chapters, referencesCount))
 }
