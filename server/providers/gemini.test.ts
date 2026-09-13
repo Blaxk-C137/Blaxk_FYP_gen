@@ -104,3 +104,34 @@ describe('gemini adapter temperature', () => {
     expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body).generationConfig).toBeUndefined()
   })
 })
+
+describe('gemini adapter generateImage', () => {
+  function imageResponse(base64: string): Response {
+    return new Response(
+      JSON.stringify({
+        candidates: [{ content: { parts: [{ text: 'here' }, { inlineData: { data: base64 } }] } }],
+      }),
+      { status: 200 }
+    )
+  }
+
+  it('returns the inlineData part as base64', async () => {
+    fetchMock.mockResolvedValueOnce(imageResponse('aGk='))
+    expect(await gemini.generateImage({ apiKey: 'k', prompt: 'a diagram' })).toEqual({ base64: 'aGk=' })
+  })
+
+  it('requests TEXT+IMAGE modalities — the live API rejects image-only', async () => {
+    fetchMock.mockResolvedValueOnce(imageResponse('aGk='))
+    await gemini.generateImage({ apiKey: 'k', prompt: 'a diagram' })
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, { body: string }]
+    expect(url).toContain('gemini-2.5-flash-image:generateContent')
+    expect(JSON.parse(init.body).generationConfig.responseModalities).toEqual(['TEXT', 'IMAGE'])
+  })
+
+  it('degrades gracefully when a 200 body is not JSON, instead of surfacing a raw SyntaxError', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('<html>gateway says hi</html>', { status: 200 }))
+    await expect(gemini.generateImage({ apiKey: 'k', prompt: 'x' })).rejects.toThrow(
+      'Gemini returned no image'
+    )
+  })
+})

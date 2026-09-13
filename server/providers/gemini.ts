@@ -60,7 +60,8 @@ export const gemini: AIProvider = {
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ['IMAGE'] },
+        // The live API rejects image-only output; TEXT+IMAGE is required.
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
       }),
       signal: AbortSignal.timeout(60_000),
     })
@@ -68,7 +69,9 @@ export const gemini: AIProvider = {
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
       throw new Error(body.error?.message ?? `Gemini error HTTP ${res.status}`)
     }
-    const j = (await res.json()) as {
+    // A 200 with a malformed body (proxy page, truncated JSON) degrades to
+    // "no image" below instead of surfacing a raw SyntaxError.
+    const j = (await res.json().catch(() => ({}))) as {
       candidates?: { content?: { parts?: { inlineData?: { data?: string } }[] } }[]
     }
     const base64 = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data
