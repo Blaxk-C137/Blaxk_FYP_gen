@@ -122,9 +122,10 @@ describe('buildDocx', () => {
     // ABSTRACT + TOC (prelim), CHAPTER ONE + CHAPTER TWO + APPENDIX (body),
     // REFERENCES — each forced onto a fresh page.
     expect((doc.match(/<w:pageBreakBefore\/>/g) ?? []).length).toBe(6)
-    // each major heading paragraph carries the break
+    // each major heading paragraph carries the break (lastIndexOf: the cached
+    // TOC entries injected earlier in the document repeat the heading texts)
     for (const h of ['ABSTRACT', 'TABLE OF CONTENTS', 'CHAPTER ONE', 'CHAPTER TWO', 'APPENDIX: QUESTIONNAIRE', 'REFERENCES']) {
-      const idx = doc.indexOf(`>${h}<`)
+      const idx = doc.lastIndexOf(`>${h}<`)
       expect(idx).toBeGreaterThan(-1)
       const pPrStart = doc.lastIndexOf('<w:pPr>', idx)
       const pPrEnd = doc.indexOf('</w:pPr>', idx)
@@ -142,8 +143,9 @@ describe('buildDocx', () => {
     expect((doc.match(/Doe, J\. \(2020\)/g) ?? []).length).toBe(1)
     // Alphabetized: Adeyemi before Doe
     expect(doc.indexOf('Adeyemi, K.')).toBeLessThan(doc.indexOf('Doe, J. (2020)'))
-    // References are last (after the questionnaire appendix)
-    expect(doc.indexOf('Section A: Demographics')).toBeLessThan(doc.indexOf('REFERENCES'))
+    // References are last (after the questionnaire appendix) — lastIndexOf
+    // because the cached TOC entries also mention REFERENCES earlier on.
+    expect(doc.indexOf('Section A: Demographics')).toBeLessThan(doc.lastIndexOf('REFERENCES'))
   })
 
   it('shows guidance placeholder text when no references exist', async () => {
@@ -281,5 +283,30 @@ describe('figure images', () => {
     const doc = await docxXml(blob)
     expect(doc).toContain('[INSERT FIGURE HERE]')
     expect(doc).not.toContain('<w:drawing>')
+  })
+})
+
+describe('table of contents', () => {
+  it('emits cached TOC entries inside the live field — renders without a field update', async () => {
+    const ch1 = { ...chapters[0], text: 'CHAPTER ONE\n1.1 Background\nSome text here.\n1.2 Objectives\nMore text.\n' }
+    const blob = await buildDocx(project, [ch1], 'abstract text')
+    const doc = await docxXml(blob)
+    expect(doc).toContain('TOC \\h \\o')           // live field instruction intact
+    // NB: brief asserted 'TOC \o', but docx 9.7.1 serializes the instruction
+    // as `TOC \h \o "1-2"` (hyperlink flag first), so that literal never occurs.
+    expect(doc).toContain('CHAPTER ONE')             // cached entry text
+    expect(doc).toMatch(/<w:tab\/>.*?<w:t[^>]*>\d+<\/w:t>/s) // dotted-leader + page number run
+    // cached entries are sibling paragraphs after the begin-paragraph closes —
+    // never nested inside the begin run's <w:r> (which would be invalid OOXML)
+    expect(doc).toMatch(/<w:fldChar w:fldCharType="separate"[^/]*\/><\/w:r><\/w:p><w:p><w:pPr><w:tabs>/)
+  })
+
+  it('preliminary headings are not Heading styles — the TOC covers chapters only', async () => {
+    const blob = await buildDocx(project, chapters, 'abstract text')
+    const doc = await docxXml(blob)
+    // ABSTRACT must be a plain bold paragraph, not a pStyle heading
+    const abs = doc.indexOf('>ABSTRACT<')
+    const before = doc.slice(Math.max(0, abs - 400), abs)
+    expect(before).not.toContain('Heading1')
   })
 })

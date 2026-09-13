@@ -7,6 +7,8 @@ import type { Chapter, ProjectInfo } from '../state/store'
 import { parseBlocks, parseInline } from './markdown'
 import type { Block, Run } from './markdown'
 import { renderChartPng } from './chart'
+import { estimateTocEntries } from './tocPages'
+import { injectTocCache } from './tocInject'
 
 export const REFERENCES_LABEL = 'AI-generated references — verify before submission.'
 const NO_REFERENCES_PLACEHOLDER =
@@ -209,7 +211,9 @@ export async function buildDocx(
 ): Promise<Blob> {
   // ---- Preliminary section: title page, abstract, TOC (roman numerals) ----
   const prelim: (Paragraph | TableOfContents)[] = []
-  prelim.push(body(project.university.toUpperCase(), { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1 }))
+  // Preliminary headings are plain bold paragraphs (not Heading styles) so the
+  // live TOC field covers chapters, sections, and REFERENCES only.
+  prelim.push(body(project.university.toUpperCase(), { bold: true, align: AlignmentType.CENTER }))
   prelim.push(body(project.courseOfStudy ?? project.department, { align: AlignmentType.CENTER }))
   prelim.push(body('', {}))
   prelim.push(body(project.topic, { bold: true, align: AlignmentType.CENTER }))
@@ -220,10 +224,10 @@ export async function buildDocx(
   prelim.push(body(`Supervisor: ${project.supervisor}`, { align: AlignmentType.CENTER }))
   prelim.push(body(project.session, { align: AlignmentType.CENTER }))
 
-  prelim.push(body('ABSTRACT', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, pageBreakBefore: true }))
+  prelim.push(body('ABSTRACT', { bold: true, align: AlignmentType.CENTER, pageBreakBefore: true }))
   prelim.push(body(abstract || 'Abstract pending generation.'))
 
-  prelim.push(body('TABLE OF CONTENTS', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, pageBreakBefore: true }))
+  prelim.push(body('TABLE OF CONTENTS', { bold: true, align: AlignmentType.CENTER, pageBreakBefore: true }))
   prelim.push(new TableOfContents('Table of Contents', {
     hyperlink: true,
     headingStyleRange: '1-2',
@@ -311,5 +315,9 @@ export async function buildDocx(
       },
     ],
   })
-  return Packer.toBlob(doc)
+  const blob = await Packer.toBlob(doc)
+  // Cache estimated TOC entries inside the field so viewers that never update
+  // fields (LibreOffice, Google Docs, previews) still show a real TOC.
+  const referencesCount = references.filter(Boolean).length
+  return injectTocCache(blob, estimateTocEntries(chapters, referencesCount))
 }
