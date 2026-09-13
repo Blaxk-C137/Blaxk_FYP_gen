@@ -100,10 +100,10 @@ export function Export() {
     try {
       const qa = await ensureDefenseQa()
       const content = await ensureSlideContent()
-      await ensureReferences().catch(() => useAppStore.getState().references)
+      const refs = await ensureReferences().catch(() => useAppStore.getState().references)
       setPhase('Building slides…')
       downloadBlob(
-        await buildPptx(project, chapters, qa, content, slideTheme),
+        await buildPptx(project, chapters, qa, content, refs, slideTheme),
         `${slug(project.topic)}-defense.pptx`
       )
     } catch (e) {
@@ -120,11 +120,11 @@ export function Export() {
     setError('')
     setPptxFailed(false)
     try {
-      await ensureReferences().catch(() => useAppStore.getState().references)
+      const refs = await ensureReferences().catch(() => useAppStore.getState().references)
       const content = slideContentFromChapters(chapters)
       setSlideContent(content)
       downloadBlob(
-        await buildPptx(project, chapters, defenseQa, content, slideTheme),
+        await buildPptx(project, chapters, defenseQa, content, refs, slideTheme),
         `${slug(project.topic)}-defense.pptx`
       )
     } catch (e) {

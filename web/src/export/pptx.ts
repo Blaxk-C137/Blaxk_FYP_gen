@@ -1,5 +1,5 @@
 import pptxgen from 'pptxgenjs'
-import type { Chapter, ProjectInfo } from '../state/store'
+import type { Chapter, ProjectInfo, ReferenceEntry } from '../state/store'
 import type { SlideContent, SlideKey } from '../ai/parseSlides'
 import { THEMES, type SlideTheme, type ThemeId } from './themes'
 
@@ -58,8 +58,8 @@ export function slideContentFromChapters(chapters: Chapter[]): SlideContent {
 }
 
 // ---------------------------------------------------------------------------
-// Deck builder — transitional v2 mapping; the full example-deck layout
-// (footer strips, auto-split, notes, references) lands in the next commit.
+// Deck builder — the example deck's methodology (13.33×7.5", footer strips,
+// per-section slides with (continued) overflow, speaker notes, references)
 // ---------------------------------------------------------------------------
 
 const SECTION_TITLES: Record<SlideKey, string> = {
@@ -77,38 +77,164 @@ const SECTION_TITLES: Record<SlideKey, string> = {
   conclusion: 'Conclusion & Recommendations',
 }
 
+// ---- no-bleed budget: 24pt Arial across ~11.7" ≈ 88 chars/line, ~12 lines ----
+const CHARS_PER_LINE = 88
+const MAX_LINES = 12
+
+/** Splits bullets into page-sized groups. Pure, deterministic. */
+export function splitBullets(items: string[]): string[][] {
+  const pages: string[][] = []
+  let current: string[] = []
+  let lines = 0
+  for (const item of items) {
+    const itemLines = Math.max(1, Math.ceil(item.length / CHARS_PER_LINE))
+    if (current.length && lines + itemLines > MAX_LINES) {
+      pages.push(current)
+      current = []
+      lines = 0
+    }
+    current.push(item)
+    lines += itemLines
+  }
+  if (current.length) pages.push(current)
+  return pages
+}
+
 export async function buildPptx(
   project: ProjectInfo,
   _chapters: Chapter[],
   defenseQa: string,
   content: SlideContent,
-  themeId: ThemeId
+  references: ReferenceEntry[],
+  themeId: ThemeId,
+  opts: { logo?: { base64: string; mime: string } | null; images?: Partial<Record<SlideKey, string>> } = {}
 ): Promise<Blob> {
   const T: SlideTheme = THEMES[themeId]
   const pptx = new pptxgen()
-  pptx.layout = 'LAYOUT_16x9'
+  pptx.defineLayout({ name: 'FYP', width: 13.333, height: 7.5 })
+  pptx.layout = 'FYP'
 
-  const W = 10, M = 0.5
+  const W = 13.333, H = 7.5, M = 0.7
   const FONT = 'Arial'
 
-  const title = pptx.addSlide()
-  title.addText(project.topic, { x: M, y: 1.0, w: W - M * 2, h: 2.0, align: 'center', fontSize: 30, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
-  title.addText(project.studentName, { x: M, y: 3.2, w: W - M * 2, h: 0.4, align: 'center', fontSize: 16, color: T.acc, fontFace: FONT, isTextBox: true, margin: 0 })
-
+  // Count slides first for truthful footers: title, content (+ continued),
+  // references (+ continued), thank-you, Q&A appendix.
   const sections = (Object.keys(SECTION_TITLES) as SlideKey[]).filter((k) => content.bullets[k].length > 0)
-  for (const key of sections) {
-    const s = pptx.addSlide()
-    s.addText(SECTION_TITLES[key], { x: M, y: 0.4, w: W - M * 2, h: 0.6, fontSize: 28, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
-    s.addText(
-      content.bullets[key].map((t, i) => ({ text: t, options: { bullet: true, breakLine: i < content.bullets[key].length - 1 } })),
-      { x: 0.8, y: 1.4, w: W - M * 2, h: 3.8, fontSize: 20, color: T.tc, fontFace: FONT, isTextBox: true, valign: 'top', margin: 0 }
-    )
+  const contentPageCount = sections.reduce((n, k) => n + splitBullets(content.bullets[k]).length, 0)
+  const refPages = Math.max(1, Math.ceil(references.length / 5))
+  const qaSlides = parseQaSlides(defenseQa)
+  const total = 1 + contentPageCount + refPages + 1 + qaSlides.length
+  let n = 0
+
+  const footer = (s: ReturnType<pptxgen['addSlide']>) => {
+    n += 1
+    s.addShape(pptx.ShapeType.rect, { x: 0, y: H - 0.36, w: W, h: 0.04, fill: { color: T.accLight }, line: { type: 'none' } })
+    s.addShape(pptx.ShapeType.rect, { x: 0, y: H - 0.32, w: W, h: 0.32, fill: { color: T.acc }, line: { type: 'none' } })
+    s.addText(`${n}/${total}`, { x: W - 1.0, y: H - 0.33, w: 0.8, h: 0.3, fontSize: 10, color: 'FFFFFF', align: 'right', fontFace: FONT, isTextBox: true, margin: 0 })
   }
 
-  for (const qa of parseQaSlides(defenseQa)) {
+  const contentSlide = (title: string, items: string[], key?: SlideKey) => {
     const s = pptx.addSlide()
-    s.addText(qa.title, { x: M, y: 0.4, w: W - M * 2, h: 0.6, fontSize: 24, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
-    s.addText(qa.body.join('\n'), { x: 0.8, y: 1.4, w: W - M * 2, h: 3.8, fontSize: 16, color: T.tc, fontFace: FONT, isTextBox: true, valign: 'top', margin: 0 })
+    const image = key ? opts.images?.[key] : undefined
+    s.background = { color: 'FFFFFF' }
+    s.addText(title, { x: M, y: 0.65, w: W - M * 2, h: 0.6, fontSize: 32, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
+    const bodyW = image ? 7.2 : W - M * 2
+    s.addText(items.map((t, i) => ({ text: t, options: { bullet: true, breakLine: i < items.length - 1 } })), {
+      x: 0.8, y: 1.9, w: bodyW, h: 5.0, fontSize: 24, color: T.tc, fontFace: FONT,
+      isTextBox: true, valign: 'top', margin: 0, lineSpacingMultiple: 1.15,
+    })
+    if (image) {
+      s.addImage({ data: `data:image/png;base64,${image}`, x: 8.3, y: 1.9, w: 4.3, h: 3.2 })
+    }
+    if (key && content.notes[key]) s.addNotes(content.notes[key]!)
+    footer(s)
+    return s
+  }
+
+  // ── 1: Title ────────────────────────────────────────────────────────────
+  {
+    const s = pptx.addSlide()
+    s.background = { color: 'FFFFFF' }
+    if (opts.logo) {
+      s.addImage({ data: `data:${opts.logo.mime};base64,${opts.logo.base64}`, x: 0.8, y: 0.65, w: 1.0, h: 1.0 })
+    }
+    s.addText(project.university.toUpperCase(), { x: 2.0, y: 0.65, w: W - 2.0 - M, h: 0.5, fontSize: 20, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
+    s.addText(`Department of ${project.department}`, { x: 2.0, y: 1.15, w: W - 2.0 - M, h: 0.4, fontSize: 14, color: T.muted, fontFace: FONT, isTextBox: true, margin: 0 })
+    s.addText(project.topic, { x: 1.0, y: 2.6, w: W - 2.0, h: 1.8, align: 'center', fontSize: 30, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
+    const line1 = [project.studentName, project.matric, project.degree].filter(Boolean).join('   ·   ')
+    s.addText(line1, { x: M, y: 4.6, w: W - M * 2, h: 0.5, align: 'center', fontSize: 16, bold: true, color: T.acc, fontFace: FONT, isTextBox: true, margin: 0 })
+    const line2 = [project.supervisor ? `Supervisor: ${project.supervisor}` : '', project.session].filter(Boolean).join('   ·   ')
+    s.addText(line2, { x: M, y: 5.15, w: W - M * 2, h: 0.4, align: 'center', fontSize: 13, color: T.muted, fontFace: FONT, isTextBox: true, margin: 0 })
+    s.addText('A Final Year Project Defense', { x: M, y: 6.4, w: W - M * 2, h: 0.35, align: 'center', fontSize: 12, color: T.muted, fontFace: FONT, isTextBox: true, margin: 0 })
+    footer(s)
+  }
+
+  // ── Content sections, each with (continued) overflow pages ─────────────
+  for (const key of sections) {
+    const pages = splitBullets(content.bullets[key])
+    pages.forEach((items, i) => {
+      const title = SECTION_TITLES[key] + (i > 0 ? ' (continued)' : '')
+      if (key === 'objectives') {
+        // Aim gets a green lead-in label; objectives are the bullets.
+        const s = pptx.addSlide()
+        s.background = { color: 'FFFFFF' }
+        s.addText(title, { x: M, y: 0.65, w: W - M * 2, h: 0.6, fontSize: 32, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
+        s.addText([
+          { text: 'Aim:  ', options: { bold: true, color: T.acc, fontSize: 24 } },
+          { text: content.aim, options: { color: T.tc, fontSize: 24, breakLine: true } },
+          ...items.map((t, j) => ({ text: t, options: { bullet: true, color: T.tc, fontSize: 24, breakLine: j < items.length - 1 } })),
+        ], { x: 0.8, y: 1.9, w: W - M * 2, h: 5.0, fontFace: FONT, isTextBox: true, valign: 'top', margin: 0, lineSpacingMultiple: 1.15 })
+        if (content.notes.objectives) s.addNotes(content.notes.objectives)
+        footer(s)
+      } else {
+        contentSlide(title, items, key)
+      }
+    })
+  }
+
+  // ── References: alphabetized, 5 per slide, [VERIFY] red bold ────────────
+  {
+    const sorted = [...references].sort((a, b) => a.apa.localeCompare(b.apa))
+    const pages = sorted.length
+      ? Array.from({ length: Math.ceil(sorted.length / 5) }, (_, i) => sorted.slice(i * 5, i * 5 + 5))
+      : [[]]
+    pages.forEach((page, i) => {
+      const s = pptx.addSlide()
+      s.background = { color: 'FFFFFF' }
+      s.addText('References' + (i > 0 ? ' (continued)' : ''), { x: M, y: 0.65, w: W - M * 2, h: 0.6, fontSize: 32, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
+      const runs = page.length
+        ? page.flatMap((r) => {
+            const base = [{ text: r.apa, options: { breakLine: true, fontSize: 18, color: T.tc } }]
+            return r.verified
+              ? base
+              : [{ text: '[VERIFY] ', options: { bold: true, color: T.att, fontSize: 18 } }, ...base]
+          })
+        : [{ text: 'No references were collected.', options: { fontSize: 18, color: T.muted } }]
+      s.addText(runs, { x: 0.8, y: 1.6, w: W - M * 2, h: 5.2, fontFace: FONT, isTextBox: true, valign: 'top', margin: 0, paraSpaceAfter: 10 })
+      footer(s)
+    })
+  }
+
+  // ── Thank You ───────────────────────────────────────────────────────────
+  {
+    const s = pptx.addSlide()
+    s.background = { color: 'FFFFFF' }
+    s.addText('Thank You', { x: M, y: 2.6, w: W - M * 2, h: 1.2, align: 'center', fontSize: 54, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
+    s.addText('Questions & discussion', { x: M, y: 3.9, w: W - M * 2, h: 0.5, align: 'center', fontSize: 18, color: T.acc, fontFace: FONT, isTextBox: true, margin: 0 })
+    const info = [project.studentName, project.department, project.university].filter(Boolean).join('  ·  ')
+    if (info) s.addText(info, { x: M, y: 6.6, w: W - M * 2, h: 0.35, align: 'center', fontSize: 12, color: T.muted, fontFace: FONT, isTextBox: true, margin: 0 })
+    footer(s)
+  }
+
+  // ── Q&A appendix (unchanged behavior) ───────────────────────────────────
+  for (const qa of qaSlides) {
+    const s = pptx.addSlide()
+    s.background = { color: 'FFFFFF' }
+    s.addText(qa.title, { x: M, y: 0.65, w: W - M * 2, h: 0.6, fontSize: 28, bold: true, color: T.tc, fontFace: FONT, isTextBox: true, margin: 0 })
+    s.addText(qa.body.map((line, i) => ({ text: line, options: { bullet: true, breakLine: i < qa.body.length - 1 } })), {
+      x: 0.8, y: 1.6, w: W - M * 2, h: 5.2, fontSize: 18, color: T.tc, fontFace: FONT, isTextBox: true, valign: 'top', margin: 0,
+    })
+    footer(s)
   }
 
   return (await pptx.write({ outputType: 'blob' })) as Blob

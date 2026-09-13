@@ -85,9 +85,10 @@ describe('Export screen — defense slides', () => {
     await userEvent.click(screen.getByRole('button', { name: /download pptx/i }))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     expect((downloadBlob as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatch(/-defense\.pptx$/)
-    const [, , qa, content, theme] = (buildPptx as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, , qa, content, refs, theme] = (buildPptx as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(qa).toContain('Q: Why?')
     expect(content.aim).toBe('To detect theft.')
+    expect(refs).toEqual([])
     expect(theme).toBe('navy')
   })
 
