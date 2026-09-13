@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { Export } from './Export'
 import { useAppStore, EMPTY_PROJECT, initialChapterState } from '../state/store'
 
-vi.mock('../api', () => ({ generateStream: vi.fn() }))
+vi.mock('../api', () => ({ generateStream: vi.fn(), resolveReferences: vi.fn() }))
 vi.mock('../export/download', () => ({ downloadBlob: vi.fn() }))
 vi.mock('../export/docx', async (orig) => ({
   ...(await orig<typeof import('../export/docx')>()),
@@ -17,7 +17,7 @@ vi.mock('../export/pptx', () => ({
 }))
 
 import { downloadBlob } from '../export/download'
-import { generateStream } from '../api'
+import { generateStream, resolveReferences } from '../api'
 import { buildPptx, slideContentFromChapters } from '../export/pptx'
 
 const slideJson = JSON.stringify({
@@ -123,5 +123,51 @@ describe('Export screen — defense slides', () => {
     await userEvent.click(screen.getByRole('button', { name: /download pptx/i }))
     await userEvent.click(await screen.findByRole('button', { name: /try again/i }))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('Export screen — reference resolution', () => {
+  function seedChapters() {
+    useAppStore.getState().setOutline([{
+      number: 1, title: 'INTRODUCTION', status: 'done' as const,
+      sections: [], text: 'CHAPTER ONE\nSecurity matters (Okonkwo, 2019) on campus.',
+    }], 'abstract')
+  }
+
+  it('resolves references on DOCX export: AI entries → verified store entries, cached', async () => {
+    seedChapters()
+    useAppStore.getState().setReferences([])
+    ;(generateStream as ReturnType<typeof vi.fn>).mockResolvedValueOnce(JSON.stringify({
+      entries: [{ key: 'Okonkwo, 2019', authors: 'Okonkwo, C.', year: '2019', title: 'Campus security', container: 'J' }],
+    }))
+    ;(resolveReferences as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { key: 'Okonkwo, 2019', apa: 'Okonkwo, C. (2019). Campus security. J.', verified: true, doi: '10.1/x' },
+    ])
+    render(<Export />)
+    await userEvent.click(screen.getByRole('button', { name: /download docx/i }))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect((resolveReferences as ReturnType<typeof vi.fn>).mock.calls[0][0][0]).toMatchObject({ key: 'Okonkwo, 2019' })
+    expect(useAppStore.getState().references[0]).toMatchObject({ verified: true })
+  })
+
+  it('second export reuses cached references — no repeat AI call', async () => {
+    seedChapters()
+    useAppStore.getState().setReferences([{ key: 'k', apa: 'a', verified: false }])
+    ;(generateStream as ReturnType<typeof vi.fn>).mockClear()
+    render(<Export />)
+    await userEvent.click(screen.getByRole('button', { name: /download docx/i }))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(generateStream).not.toHaveBeenCalled()
+    expect(resolveReferences).not.toHaveBeenCalled()
+  })
+
+  it('resolution failure shows the error but never blocks a retry', async () => {
+    seedChapters()
+    useAppStore.getState().setReferences([])
+    ;(generateStream as ReturnType<typeof vi.fn>).mockResolvedValueOnce(JSON.stringify({ entries: [{ key: 'k', authors: 'A, B.', year: '2020', title: 'T' }] }))
+    ;(resolveReferences as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('crossref down'))
+    render(<Export />)
+    await userEvent.click(screen.getByRole('button', { name: /download docx/i }))
+    expect(await screen.findByText(/crossref down/i)).toBeTruthy()
   })
 })

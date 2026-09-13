@@ -8,7 +8,9 @@ const words = (t: string) => (t ? t.trim().split(/\s+/).length : 0)
 export function Review({ onNext }: { onNext: () => void }) {
   const chapters = useChapters()
   const updateChapter = useAppStore((s) => s.updateChapter)
+  const references = useAppStore((s) => s.references)
   const total = chapters.reduce((n, c) => n + words(c.text), 0)
+  const verifiedCount = references.filter((r) => r.verified).length
 
   return (
     <main className="container">
@@ -32,6 +34,22 @@ export function Review({ onNext }: { onNext: () => void }) {
           />
         </section>
       ))}
+      {references.length > 0 && (
+        <section className="chapter" aria-label="References">
+          <div className="chapter-head">
+            <span className="chapter-title">REFERENCES</span>
+            <span className="chapter-meta">{verifiedCount} of {references.length} verified</span>
+          </div>
+          <ul className="ref-list">
+            {references.map((r, i) => (
+              <li key={i} className={r.verified ? 'ref-ok' : 'ref-check'}>
+                <span className="ref-text">{r.apa}</span>
+                <span className={`ref-badge${r.verified ? '' : ' bad'}`}>{r.verified ? 'verified' : 'verify'}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="actions-row">
         <button className="primary" disabled={total === 0} onClick={onNext}>
           Continue to export

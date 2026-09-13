@@ -561,3 +561,23 @@ a:hover { color: var(--green); }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- review: references panel ---------- */
+
+.ref-list { list-style: none; padding: 0; margin: 0.5rem 0; display: grid; gap: 0.4rem; }
+
+.ref-list li {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem;
+  padding-bottom: 0.4rem; border-bottom: 1px solid var(--line);
+}
+
+.ref-text { font-size: 0.9rem; }
+
+.ref-badge {
+  flex-shrink: 0; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--green-ink); border: 1px solid var(--green); border-radius: 999px; padding: 0.1rem 0.5rem;
+}
+
+.ref-badge.bad { color: #b91c1c; border-color: #dc8181; }
+
+.ref-check .ref-text { color: var(--muted); }

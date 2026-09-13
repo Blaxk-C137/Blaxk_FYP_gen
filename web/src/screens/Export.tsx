@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useAppStore, useProject, useChapters, useSettings } from '../state/store'
-import { generateStream } from '../api'
-import { systemPrompt, defenseQuestionsPrompt, slidesPrompt } from '../prompts'
+import type { ReferenceEntry } from '../state/store'
+import { generateStream, resolveReferences } from '../api'
+import { systemPrompt, defenseQuestionsPrompt, slidesPrompt, referencesPrompt } from '../prompts'
 import { trackFor } from '../ai/tracks'
 import { parseSlides } from '../ai/parseSlides'
 import type { SlideContent } from '../ai/parseSlides'
+import { extractCitations } from '../ai/extractCitations'
+import { parseReferences } from '../ai/parseReferences'
 import { buildDocx } from '../export/docx'
 import { buildPptx, slideContentFromChapters } from '../export/pptx'
 import { THEME_OPTIONS } from '../export/themes'
@@ -19,7 +22,6 @@ export function Export() {
   const chapters = useChapters()
   const settings = useSettings()
   const abstract = useAppStore((s) => s.abstract)
-  const references = useAppStore((s) => s.references)
   const slideTheme = useAppStore((s) => s.slideTheme)
   const setSlideTheme = useAppStore((s) => s.setSlideTheme)
   const [defenseQa, setDefenseQa] = useState('')
@@ -33,14 +35,17 @@ export function Export() {
     setBusy('docx')
     setError('')
     try {
-      downloadBlob(
-        await buildDocx(project, chapters, abstract, references.map((r) => (typeof r === 'string' ? r : r.apa))),
-        `${slug(project.topic)}.docx`
-      )
+      let refs = useAppStore.getState().references
+      if (!refs.length) refs = await ensureReferences().catch((e) => {
+        setError(e instanceof Error ? e.message : 'Reference verification failed')
+        return useAppStore.getState().references
+      })
+      downloadBlob(await buildDocx(project, chapters, abstract, refs.map((r) => r.apa)), `${slug(project.topic)}.docx`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed')
     } finally {
       setBusy('')
+      setPhase('')
     }
   }
 
@@ -65,6 +70,24 @@ export function Export() {
     return content
   }
 
+  async function ensureReferences(): Promise<ReferenceEntry[]> {
+    const current = useAppStore.getState().references
+    const keys = extractCitations(chapters.map((c) => c.text).join('\n'))
+    if (!keys.length) return current
+    // Cached: we already have entries and no new keys appeared.
+    const known = new Set(current.map((r) => r.key))
+    if (current.length && keys.every((k) => known.has(k))) return current
+    setPhase('Verifying references…')
+    const track = trackFor(project.track, project.courseOfStudy, project.fieldOfStudy)
+    const raw = await generateStream(settings, systemPrompt(track), referencesPrompt(project, keys), () => {})
+    const drafts = parseReferences(raw)
+    const entries = await resolveReferences(drafts)
+    // Keep any previously verified entries not covered this round.
+    const merged = [...current.filter((r) => r.verified && !entries.some((e) => e.key === r.key)), ...entries]
+    useAppStore.getState().setReferences(merged)
+    return merged
+  }
+
   async function pptx() {
     setBusy('pptx')
     setError('')
@@ -72,6 +95,7 @@ export function Export() {
     try {
       const qa = await ensureDefenseQa()
       const content = await ensureSlideContent()
+      await ensureReferences().catch(() => useAppStore.getState().references)
       setPhase('Building slides…')
       downloadBlob(
         await buildPptx(project, chapters, qa, content, slideTheme),
@@ -91,6 +115,7 @@ export function Export() {
     setError('')
     setPptxFailed(false)
     try {
+      await ensureReferences().catch(() => useAppStore.getState().references)
       const content = slideContentFromChapters(chapters)
       setSlideContent(content)
       downloadBlob(
