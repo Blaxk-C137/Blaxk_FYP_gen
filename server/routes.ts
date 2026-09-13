@@ -4,6 +4,7 @@ import { REGISTRY } from './providers/registry.js'
 import { PROVIDERS } from '../shared/constants.js'
 import type { ProviderId } from '../shared/constants.js'
 import { configureNetworking, describeNetworkError, hasNetworkCause, logNetworkError } from './net.js'
+import { findUniversityLogo } from './logo.js'
 
 interface GenerateBody {
   provider?: string
@@ -129,6 +130,16 @@ export function registerAIRoutes(app: Hono) {
         { error: hasNetworkCause(err) ? networkError(provider.id, err) : err instanceof Error ? err.message : 'Image generation failed' },
         502
       )
+    }
+  })
+
+  app.get('/api/logo', async (c) => {
+    const university = c.req.query('university')?.trim()
+    if (!university) return c.json({ logo: null })
+    try {
+      return c.json(await findUniversityLogo(university))
+    } catch {
+      return c.json({ logo: null })
     }
   })
 }
