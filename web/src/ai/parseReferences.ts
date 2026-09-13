@@ -6,7 +6,10 @@ import type { ReferenceInput } from '@shared/constants'
 function entry(v: unknown): ReferenceInput | null {
   if (typeof v !== 'object' || v === null) return null
   const e = v as Record<string, unknown>
-  const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '')
+  // LLMs often emit "year": 2019 or "volume": 8 as JSON numbers — coerce
+  // finite numbers to strings so those fields aren't silently dropped.
+  const str = (x: unknown): string =>
+    typeof x === 'string' ? x.trim() : typeof x === 'number' && Number.isFinite(x) ? String(x).trim() : ''
   const title = str(e.title)
   const authors = str(e.authors)
   if (!title || !authors) return null

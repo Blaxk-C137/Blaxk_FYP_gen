@@ -28,6 +28,16 @@ describe('parseReferences', () => {
     expect(r[0].container).toBe('')
   })
 
+  it('coerces JSON numbers to strings for year and volume', () => {
+    const r = parseReferences(JSON.stringify({ entries: [
+      { key: 'Okonkwo, 2019', authors: 'Okonkwo, C.', year: 2019, title: 'Campus security in Nigeria', container: 'Safety Journal', volume: 4, issue: 2, pages: '10-20', doi: '' },
+    ] }))
+    expect(r).toHaveLength(1)
+    expect(r[0].year).toBe('2019')
+    expect(r[0].volume).toBe('4')
+    expect(r[0].issue).toBe('2')
+  })
+
   it('throws when nothing usable comes back', () => {
     expect(() => parseReferences('I could not do that.')).toThrow('Model did not return valid JSON')
   })
