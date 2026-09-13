@@ -125,3 +125,37 @@ describe('AI routes', () => {
     expect(body.error).toContain('UND_ERR_CONNECT_TIMEOUT')
   })
 })
+
+describe('POST /api/generate-image', () => {
+  it('returns base64 image data from the provider', async () => {
+    vi.spyOn(gemini, 'generateImage').mockResolvedValueOnce({ base64: 'aGk=' })
+    const res = await app().request('/api/generate-image', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'gemini', apiKey: 'k', prompt: 'a diagram' }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ base64: 'aGk=' })
+  })
+
+  it('501 when the provider has no image capability', async () => {
+    const res = await app().request('/api/generate-image', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'anthropic', apiKey: 'k', prompt: 'x' }),
+    })
+    expect(res.status).toBe(501)
+    expect((await res.json()).error).toContain('does not support image generation')
+  })
+
+  it('provider failure becomes 502 with the message', async () => {
+    vi.spyOn(gemini, 'generateImage').mockRejectedValueOnce(new Error('safety block'))
+    const res = await app().request('/api/generate-image', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'gemini', apiKey: 'k', prompt: 'x' }),
+    })
+    expect(res.status).toBe(502)
+    expect((await res.json()).error).toBe('safety block')
+  })
+})

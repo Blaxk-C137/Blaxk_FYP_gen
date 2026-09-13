@@ -108,4 +108,27 @@ export function registerAIRoutes(app: Hono) {
       return c.json({ error: message }, 502)
     }
   })
+
+  app.post('/api/generate-image', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as GenerateBody
+    if (!body.provider || !PROVIDERS.includes(body.provider as never)) {
+      return c.json({ error: 'Unknown provider' }, 400)
+    }
+    if (!body.apiKey) return c.json({ error: 'Missing API key' }, 400)
+    if (!body.prompt) return c.json({ error: 'Missing prompt' }, 400)
+    const provider = REGISTRY[body.provider as ProviderId]
+    if (!provider.generateImage) {
+      return c.json({ error: `${provider.id} does not support image generation` }, 501)
+    }
+    try {
+      const { base64 } = await provider.generateImage({ apiKey: body.apiKey, prompt: body.prompt })
+      return c.json({ base64 })
+    } catch (err) {
+      logNetworkError('/api/generate-image', provider.id, err)
+      return c.json(
+        { error: hasNetworkCause(err) ? networkError(provider.id, err) : err instanceof Error ? err.message : 'Image generation failed' },
+        502
+      )
+    }
+  })
 }

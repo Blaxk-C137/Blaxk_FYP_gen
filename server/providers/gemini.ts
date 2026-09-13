@@ -52,4 +52,27 @@ export const gemini: AIProvider = {
         `Gemini returned no text. Last event: ${lastEvent.slice(0, 300) || '(empty stream)'}`
       )
   },
+
+  async generateImage({ apiKey, model, prompt }) {
+    const m = model ?? 'gemini-2.5-flash-image'
+    const res = await fetch(`${BASE}/${m}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['IMAGE'] },
+      }),
+      signal: AbortSignal.timeout(60_000),
+    })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
+      throw new Error(body.error?.message ?? `Gemini error HTTP ${res.status}`)
+    }
+    const j = (await res.json()) as {
+      candidates?: { content?: { parts?: { inlineData?: { data?: string } }[] } }[]
+    }
+    const base64 = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data
+    if (!base64) throw new Error('Gemini returned no image')
+    return { base64 }
+  },
 }
