@@ -24,22 +24,32 @@ export function referencesSection(chapters: Chapter[] = [], references: string[]
   return `${body}\n\n${REFERENCES_LABEL}`
 }
 
-const body = (text: string, opts: { bold?: boolean; heading?: (typeof HeadingLevel)[keyof typeof HeadingLevel]; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; pageBreakBefore?: boolean } = {}) =>
+const body = (text: string, opts: { bold?: boolean; color?: string; heading?: (typeof HeadingLevel)[keyof typeof HeadingLevel]; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; pageBreakBefore?: boolean } = {}) =>
   new Paragraph({
     heading: opts.heading,
     alignment: opts.align ?? AlignmentType.JUSTIFIED,
     pageBreakBefore: opts.pageBreakBefore,
     spacing: { line: 480 }, // double spacing
-    children: [new TextRun({ text, bold: opts.bold, font: 'Times New Roman', size: 24 })], // 12pt = 24 half-points
+    children: [new TextRun({ text, bold: opts.bold, color: opts.color, font: 'Times New Roman', size: 24 })], // 12pt = 24 half-points
   })
 
+/** Attention paragraph: red bold — bracketed user-action placeholders. */
+const attention = (text: string, opts: Parameters<typeof body>[1] = {}) =>
+  body(text, { ...opts, bold: true, color: 'C00000' })
+
 /** Paragraph built from markdown runs (bold/italic become Word formatting). */
+const toTextRun = (r: Run) =>
+  new TextRun({
+    text: r.text, bold: r.bold || r.attention, italics: r.italic,
+    color: r.attention ? 'C00000' : undefined,
+    font: 'Times New Roman', size: 24,
+  })
+
 const bodyRuns = (runs: Run[]) =>
   new Paragraph({
     alignment: AlignmentType.JUSTIFIED,
     spacing: { line: 480 },
-    children: runs.map((r) =>
-      new TextRun({ text: r.text, bold: r.bold, italics: r.italic, font: 'Times New Roman', size: 24 })),
+    children: runs.map(toTextRun),
   })
 
 const cell = (text: string, bold = false) =>
@@ -102,8 +112,7 @@ function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: num
           ...(block.ordered
             ? { numbering: { reference: numRef, level: 0 } }
             : { bullet: { level: 0 } }),
-          children: parseInline(item).map((r) =>
-            new TextRun({ text: r.text, bold: r.bold, italics: r.italic, font: 'Times New Roman', size: 24 })),
+          children: parseInline(item).map(toTextRun),
         }))
     case 'table':
       return [markdownTable(block)]
@@ -122,7 +131,7 @@ function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: num
         }))
       } else {
         // No canvas (or bad spec): visible placeholder, never raw JSON.
-        out.push(body(
+        out.push(attention(
           `[INSERT CHART HERE — create this chart ("${block.chart.title ?? 'chart'}") from your real data]`,
           { align: AlignmentType.CENTER }
         ))
@@ -132,7 +141,7 @@ function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: num
     }
     case 'figure': {
       return [
-        body('[INSERT FIGURE HERE]', { bold: true, align: AlignmentType.CENTER }),
+        attention('[INSERT FIGURE HERE]', { align: AlignmentType.CENTER }),
         body(`Figure ${chapterNumber}.${figureNo}: ${block.description}`, { align: AlignmentType.CENTER }),
       ]
     }
@@ -223,7 +232,8 @@ export async function buildDocx(
   bodyChildren.push(body('REFERENCES', { bold: true, align: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, pageBreakBefore: true }))
   for (const ref of referencesSection(chapters, references).split('\n')) {
     const t = ref.trim()
-    if (t) bodyChildren.push(body(t, { align: AlignmentType.LEFT }))
+    if (t === REFERENCES_LABEL) bodyChildren.push(attention(t, { align: AlignmentType.LEFT }))
+    else if (t) bodyChildren.push(body(t, { align: AlignmentType.LEFT }))
   }
 
   // Each ordered list gets its own numbering instance (fyp-ordered-1, -2, …)

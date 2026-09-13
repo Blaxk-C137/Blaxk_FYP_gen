@@ -162,6 +162,20 @@ describe('referencesSection', () => {
   })
 })
 
+describe('attention styling', () => {
+  it('renders placeholders red and bold; the references label too', async () => {
+    const ch = { ...chapters[0], text: 'CHAPTER ONE\n1.1 A\nA claim [INSERT VERIFIED CITATION HERE] follows.\n' }
+    const blob = await buildDocx(project, [ch], 'abstract', [])
+    const doc = await docxXml(blob)
+    expect(doc).toContain('[INSERT VERIFIED CITATION HERE]')
+    expect(doc).toMatch(/<w:r><w:rPr>(?:(?!<\/w:r>).)*?<w:b\/>(?:(?!<\/w:r>).)*?C00000.*?\[INSERT VERIFIED CITATION HERE\]/s)
+    // NB: brief's regex used `[^<]*`, but OOXML always emits `</w:rPr><w:t…>`
+    // (plus sz tags) between the color attr and the text node, so no run can
+    // ever satisfy it. Same-run guard instead: C00000 and the label share a run.
+    expect(doc).toMatch(/C00000(?:(?!<\/w:r>).)*?AI-generated references/s)
+  })
+})
+
 describe('buildDocx markdown rendering', () => {
   it('renders inline bold/italic as Word formatting, not literal markdown', async () => {
     const ch: Chapter[] = [{

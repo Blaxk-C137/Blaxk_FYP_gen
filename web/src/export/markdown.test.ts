@@ -21,6 +21,26 @@ describe('parseInline', () => {
   })
 })
 
+describe('attention spans', () => {
+  it('marks bracketed INSERT/VERIFY/ADD/TODO spans, keeping surrounding text plain', () => {
+    const runs = parseInline('As noted (Smith, 2020) see [INSERT VERIFIED CITATION HERE] for details.')
+    const att = runs.filter((r) => r.attention)
+    expect(att).toHaveLength(1)
+    expect(att[0].text).toBe('[INSERT VERIFIED CITATION HERE]')
+    expect(runs[0].text).toContain('As noted')
+  })
+
+  it('handles multiple placeholders in one paragraph', () => {
+    const runs = parseInline('[VERIFY] both [ADD SAMPLE SIZE] please')
+    expect(runs.filter((r) => r.attention).map((r) => r.text))
+      .toEqual(['[VERIFY]', '[ADD SAMPLE SIZE]'])
+  })
+
+  it('leaves ordinary bracketed text untouched', () => {
+    expect(parseInline('The result [see figure] was clear.').every((r) => !r.attention)).toBe(true)
+  })
+})
+
 describe('parseBlocks', () => {
   it('classifies chapter and section headings', () => {
     const blocks = parseBlocks('CHAPTER ONE\n1.1 Background of the Study\nBody text.')

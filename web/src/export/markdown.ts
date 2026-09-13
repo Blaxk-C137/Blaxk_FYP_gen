@@ -6,6 +6,7 @@ export interface Run {
   text: string
   bold?: boolean
   italic?: boolean
+  attention?: boolean
 }
 
 export type Block =
@@ -38,7 +39,23 @@ export function parseInline(text: string): Run[] {
     last = m.index + m[0].length
   }
   if (last < text.length) runs.push({ text: text.slice(last) })
-  return runs.length ? runs : [{ text }]
+  const split = runs.flatMap(splitAttention)
+  return split.length ? split : [{ text }]
+}
+
+/** Bracketed action placeholders the user must not miss. */
+const ATTENTION_RE = /\[(?:INSERT[^\]]*?|VERIFY|ADD[^\]]*?|TODO[^\]]*?)\]/gi
+
+function splitAttention(run: Run): Run[] {
+  const out: Run[] = []
+  let last = 0
+  for (const m of run.text.matchAll(ATTENTION_RE)) {
+    if (m.index! > last) out.push({ ...run, text: run.text.slice(last, m.index) })
+    out.push({ ...run, text: m[0], attention: true })
+    last = m.index! + m[0].length
+  }
+  if (last < run.text.length) out.push({ ...run, text: run.text.slice(last) })
+  return out
 }
 
 const CHAPTER_RE = /^(CHAPTER\s+\S+|APPENDIX\b.*)$/i
