@@ -40,6 +40,32 @@ function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
 }
 
 
+// word/document.xml text for a docx blob (unzipped via JSZip).
+async function docxXml(blob: Blob): Promise<string> {
+  const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+  return zip.file('word/document.xml')!.async('string')
+}
+
+// word/numbering.xml text for a docx blob (unzipped via JSZip).
+async function numberingXml(blob: Blob): Promise<string> {
+  const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+  return zip.file('word/numbering.xml')!.async('string')
+}
+
+describe('ordered list numbering', () => {
+  it('two ordered lists in different chapters restart at 1 (distinct numIds)', async () => {
+    const ch1 = { ...chapters[0], text: 'CHAPTER ONE\n1.1 A\nFirst list:\n\n1. one\n2. two\n3. three\n' }
+    const ch2 = { ...chapters[1], text: 'CHAPTER THREE\n3.1 B\nSecond list:\n\n1. alpha\n2. beta\n' }
+    const blob = await buildDocx(project, [ch1, ch2], 'abstract text')
+    const doc = await docxXml(blob)
+    const num = await numberingXml(blob)
+    const ids = [...doc.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1])
+    const distinct = new Set(ids)
+    expect(distinct.size).toBe(2)          // one numbering instance per list
+    expect(num).toMatch(/<w:start w:val="1"\/>/) // each instance starts at 1
+  })
+})
+
 describe('buildDocx', () => {
   it('produces a valid docx containing title page and chapter content', async () => {
     const blob = await buildDocx(project, chapters, 'An abstract.', references)

@@ -67,11 +67,23 @@ function markdownTable(block: Extract<Block, { kind: 'table' }>): Table {
 const CHART_W = 550
 const CHART_H = Math.round((CHART_W * 520) / 900)
 
+/** Shared level definition for ordered-list numbering instances. */
+function orderedLevel() {
+  return {
+    level: 0,
+    format: LevelFormat.DECIMAL,
+    text: '%1.',
+    alignment: AlignmentType.START,
+    style: { paragraph: { indent: { left: 720, hanging: 360 } } },
+  } as const
+}
+
 /**
  * Renders one parsed chapter-text block as Word children (paragraphs or a
- * table). Figures are captioned per chapter (Figure 4.1 style).
+ * table). Figures are captioned per chapter (Figure 4.1 style). Ordered lists
+ * take a per-list numbering reference so each list restarts at 1.
  */
-function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: number): (Paragraph | Table)[] {
+function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: number, numRef: string): (Paragraph | Table)[] {
   switch (block.kind) {
     case 'chapter':
     case 'section':
@@ -88,7 +100,7 @@ function chapterBlockChildren(block: Block, chapterNumber: number, figureNo: num
         new Paragraph({
           spacing: { line: 480 },
           ...(block.ordered
-            ? { numbering: { reference: 'fyp-ordered', level: 0 } }
+            ? { numbering: { reference: numRef, level: 0 } }
             : { bullet: { level: 0 } }),
           children: parseInline(item).map((r) =>
             new TextRun({ text: r.text, bold: r.bold, italics: r.italic, font: 'Times New Roman', size: 24 })),
@@ -184,6 +196,7 @@ export async function buildDocx(
 
   // ---- Body section: chapters (+ appendix), references (Arabic, restart at 1) ----
   const bodyChildren: (Paragraph | Table)[] = []
+  let listCount = 0
   for (const ch of chapters) {
     if (!ch.text) continue
     let figureNo = 0
@@ -197,8 +210,12 @@ export async function buildDocx(
         }))
         continue
       }
+      if (block.kind === 'list' && block.ordered) listCount++
       if (block.kind === 'chart' || block.kind === 'figure') figureNo++
-      bodyChildren.push(...chapterBlockChildren(block, ch.number, figureNo))
+      bodyChildren.push(...chapterBlockChildren(
+        block, ch.number, figureNo,
+        block.kind === 'list' && block.ordered ? `fyp-ordered-${listCount}` : 'fyp-ordered'
+      ))
     }
   }
 
@@ -209,21 +226,19 @@ export async function buildDocx(
     if (t) bodyChildren.push(body(t, { align: AlignmentType.LEFT }))
   }
 
+  // Each ordered list gets its own numbering instance (fyp-ordered-1, -2, …)
+  // so Word restarts at 1 per list instead of running one list throughout.
+  const numberingConfig = [
+    { reference: 'fyp-ordered', levels: [orderedLevel()] },
+    ...Array.from({ length: listCount }, (_, i) => ({
+      reference: `fyp-ordered-${i + 1}`, levels: [orderedLevel()],
+    })),
+  ]
+
   const doc = new Document({
     styles: { default: { document: { run: { font: 'Times New Roman', size: 24 } } } },
     features: { updateFields: true }, // Word offers to refresh the TOC field on open
-    numbering: {
-      config: [{
-        reference: 'fyp-ordered',
-        levels: [{
-          level: 0,
-          format: LevelFormat.DECIMAL,
-          text: '%1.',
-          alignment: AlignmentType.START,
-          style: { paragraph: { indent: { left: 720, hanging: 360 } } },
-        }],
-      }],
-    },
+    numbering: { config: numberingConfig },
     sections: [
       {
         // NB: this docx version reads pageNumbers from inside `page`
