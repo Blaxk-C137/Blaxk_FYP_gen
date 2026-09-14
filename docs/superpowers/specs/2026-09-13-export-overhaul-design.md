@@ -127,7 +127,7 @@ All routes follow the existing `server/routes.ts` patterns: body validation, pro
 ### Layout system
 
 - Custom pptxgenjs layout: 13.33×7.5". Arial. Title 32pt bold (dark theme color); body 24pt; page number 10pt white. White content backgrounds.
-- Footer strips on every slide except title/thank-you: 0.04" light-accent rect over 0.32" main-accent rect, full width, at the bottom; page number right-aligned on the thick strip. Truthful `n/total` counting continued + references slides.
+- Footer strips on every slide (the reference deck carries strips on the title slide too — verified in its slide-1 OOXML): 0.04" light-accent rect over 0.32" main-accent rect, full width, at the bottom; page number right-aligned on the thick strip. Truthful `n/total` counting continued + references slides.
 - Green lead-in labels: runs like "Aim:" / "Background:" in accent color, bold, inline before body text.
 
 ### Slide structure (follows the example)
