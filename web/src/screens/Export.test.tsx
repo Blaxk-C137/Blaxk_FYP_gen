@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { Export } from './Export'
 import { useAppStore, EMPTY_PROJECT, initialChapterState } from '../state/store'
 
-vi.mock('../api', () => ({ generateStream: vi.fn(), resolveReferences: vi.fn() }))
+vi.mock('../api', () => ({ generateStream: vi.fn(), resolveReferences: vi.fn(), fetchLogo: vi.fn(), generateImage: vi.fn() }))
 vi.mock('../export/download', () => ({ downloadBlob: vi.fn() }))
 vi.mock('../export/docx', async (orig) => ({
   ...(await orig<typeof import('../export/docx')>()),
@@ -25,7 +25,7 @@ vi.mock('../export/pptx', () => ({
 }))
 
 import { downloadBlob } from '../export/download'
-import { generateStream, resolveReferences } from '../api'
+import { generateStream, resolveReferences, fetchLogo, generateImage } from '../api'
 import { buildPptx, slideContentFromChapters } from '../export/pptx'
 
 const slideJson = JSON.stringify({
@@ -43,7 +43,7 @@ const slideJson = JSON.stringify({
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
-  useAppStore.setState({ settings: { provider: 'gemini', apiKey: 'k' }, project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '', slideTheme: 'navy' })
+  useAppStore.setState({ settings: { provider: 'gemini', apiKey: 'k' }, project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '', slideTheme: 'forest' })
 })
 
 describe('Export screen', () => {
@@ -70,10 +70,10 @@ describe('Export screen — defense slides', () => {
   it('theme picker updates the persisted preference', async () => {
     render(<Export />)
     const forest = screen.getByRole('radio', { name: /forest green/i })
+    expect(forest.getAttribute('aria-checked')).toBe('true') // store default rides
+    await userEvent.click(screen.getByRole('radio', { name: /deep navy/i }))
+    expect(useAppStore.getState().slideTheme).toBe('navy')
     expect(forest.getAttribute('aria-checked')).toBe('false')
-    await userEvent.click(forest)
-    expect(useAppStore.getState().slideTheme).toBe('forest')
-    expect(forest.getAttribute('aria-checked')).toBe('true')
   })
 
   it('PPTX click: generates Q&A then slide content, builds with both', async () => {
@@ -85,11 +85,12 @@ describe('Export screen — defense slides', () => {
     await userEvent.click(screen.getByRole('button', { name: /download pptx/i }))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     expect((downloadBlob as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatch(/-defense\.pptx$/)
-    const [, , qa, content, refs, theme] = (buildPptx as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, , qa, content, refs, theme, opts] = (buildPptx as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(qa).toContain('Q: Why?')
     expect(content.aim).toBe('To detect theft.')
     expect(refs).toEqual([])
-    expect(theme).toBe('navy')
+    expect(theme).toBe('forest')
+    expect(opts).toEqual({ logo: null, images: {} }) // no university, no image prompts
   })
 
   it('reuses cached Q&A and slide content on a second click (one AI call each)', async () => {
@@ -180,5 +181,50 @@ describe('Export screen — reference resolution', () => {
     render(<Export />)
     await userEvent.click(screen.getByRole('button', { name: /download docx/i }))
     expect(await screen.findByText(/crossref down/i)).toBeTruthy()
+  })
+})
+
+describe('Export screen — pptx flow v2', () => {
+  function seedProject() {
+    useAppStore.getState().setProject({ university: 'Bayero University Kano' })
+    useAppStore.getState().setOutline(
+      [{ number: 1, title: 'INTRODUCTION', sections: [], status: 'done', text: 'body' }],
+      'abstract'
+    )
+    useAppStore.getState().setReferences([{ key: 'k', apa: 'A (2020). T.', verified: true }])
+  }
+
+  it('fetches the logo, generates slide images, and builds with all of them', async () => {
+    seedProject()
+    ;(generateStream as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('Chapter 1 — INTRODUCTION\nQ: Why?\nA: Because.')
+      .mockResolvedValueOnce(JSON.stringify({ aim: 'Aim.', bullets: { intro: ['x'] }, notes: {}, images: [{ slide: 'sysdesign', prompt: 'a diagram' }] }))
+    ;(fetchLogo as ReturnType<typeof vi.fn>).mockResolvedValue({ base64: 'bG9nbw==', mime: 'image/png' })
+    ;(generateImage as ReturnType<typeof vi.fn>).mockResolvedValue('aW1n')
+    render(<Export />)
+    await userEvent.click(screen.getByRole('button', { name: /download pptx/i }))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(fetchLogo).toHaveBeenCalledWith('Bayero University Kano')
+    expect(generateImage).toHaveBeenCalledWith(expect.anything(), 'a diagram')
+    const args = (buildPptx as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(args[5]).toBe('forest')                       // default theme
+    expect(args[6].logo).toEqual({ base64: 'bG9nbw==', mime: 'image/png' })
+    expect(args[6].images.sysdesign).toBe('aW1n')
+    expect(args[4][0]).toMatchObject({ verified: true }) // typed references
+  })
+
+  it('logo and image failures degrade to null — export still succeeds', async () => {
+    seedProject()
+    ;(generateStream as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('Chapter 1 — INTRODUCTION\nQ: Why?\nA: Because.')
+      .mockResolvedValueOnce(JSON.stringify({ aim: 'Aim.', bullets: { intro: ['x'] }, notes: {}, images: [{ slide: 'results', prompt: 'chart' }] }))
+    ;(fetchLogo as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    ;(generateImage as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    render(<Export />)
+    await userEvent.click(screen.getByRole('button', { name: /download pptx/i }))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    const args = (buildPptx as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(args[6].logo).toBeNull()
+    expect(args[6].images.results).toBeUndefined()
   })
 })

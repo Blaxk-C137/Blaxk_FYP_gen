@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useAppStore, useProject, useChapters, useSettings } from '../state/store'
 import type { ReferenceEntry } from '../state/store'
-import { generateStream, generateImage, resolveReferences } from '../api'
+import { generateStream, generateImage, fetchLogo, resolveReferences } from '../api'
 import { systemPrompt, defenseQuestionsPrompt, slidesPrompt, referencesPrompt } from '../prompts'
 import { trackFor } from '../ai/tracks'
 import { parseSlides } from '../ai/parseSlides'
-import type { SlideContent } from '../ai/parseSlides'
+import type { SlideContent, SlideKey } from '../ai/parseSlides'
 import { extractCitations } from '../ai/extractCitations'
 import { parseReferences } from '../ai/parseReferences'
 import { buildDocx } from '../export/docx'
@@ -101,9 +101,21 @@ export function Export() {
       const qa = await ensureDefenseQa()
       const content = await ensureSlideContent()
       const refs = await ensureReferences().catch(() => useAppStore.getState().references)
+      setPhase('Preparing slide assets…')
+      const [logo, images] = await Promise.all([
+        project.university ? fetchLogo(project.university) : Promise.resolve(null),
+        (async () => {
+          const out: Partial<Record<SlideKey, string>> = {}
+          for (const img of content.images) {
+            const data = await generateImage(settings, img.prompt)
+            if (data) out[img.slide] = data
+          }
+          return out
+        })(),
+      ])
       setPhase('Building slides…')
       downloadBlob(
-        await buildPptx(project, chapters, qa, content, refs, slideTheme),
+        await buildPptx(project, chapters, qa, content, refs, slideTheme, { logo, images }),
         `${slug(project.topic)}-defense.pptx`
       )
     } catch (e) {
@@ -120,11 +132,11 @@ export function Export() {
     setError('')
     setPptxFailed(false)
     try {
-      const refs = await ensureReferences().catch(() => useAppStore.getState().references)
       const content = slideContentFromChapters(chapters)
       setSlideContent(content)
+      const refs = useAppStore.getState().references
       downloadBlob(
-        await buildPptx(project, chapters, defenseQa, content, refs, slideTheme),
+        await buildPptx(project, chapters, defenseQa, content, refs, slideTheme, { logo: null }),
         `${slug(project.topic)}-defense.pptx`
       )
     } catch (e) {

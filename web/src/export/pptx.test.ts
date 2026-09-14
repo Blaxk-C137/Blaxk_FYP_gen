@@ -127,6 +127,28 @@ describe('buildPptx v2', () => {
     expect(Object.keys(zip.files).some((n) => n.startsWith('ppt/media/'))).toBe(true)
   })
 
+  it('splits image sections with the narrowed budget — full-width bullets that overflow the 7.2" body spill to (continued)', async () => {
+    // Bullets that fit the 88-char/line full-width budget but overflow the
+    // ~53-char/line budget that applies when a section image narrows the body.
+    const narrowFit: SlideContent = {
+      ...content,
+      bullets: {
+        ...content.bullets,
+        methodology: Array.from({ length: 8 }, () => 'A '.repeat(30).trim()), // 59 chars: 1 line full-width, 2 lines narrowed
+        implementation: Array.from({ length: 8 }, () => 'I '.repeat(30).trim()),
+      },
+    }
+    const png1x1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+    const withoutImage = await slidesOf(await buildPptx(project, chapters, '', narrowFit, references, 'forest'))
+    expect(withoutImage.names).toHaveLength(15) // methodology fits on one slide at full width (no Q&A slides)
+    const withImage = await slidesOf(await buildPptx(project, chapters, '', narrowFit, references, 'forest', {
+      images: { methodology: png1x1 },
+    }))
+    const titles = await Promise.all(withImage.names.map((_, i) => withImage.xml(i + 1)))
+    expect(titles.some((t) => t.includes('Methodology (continued)'))).toBe(true)
+    expect(withImage.names.length).toBeGreaterThan(withoutImage.names.length)
+  })
+
   it('skips sections with no bullets and works without logo/images', async () => {
     const thin: SlideContent = { aim: 'One aim.', bullets: { ...content.bullets, scope: [], significance: [], literature: [] }, notes: {}, images: [] }
     const { names } = await slidesOf(await buildPptx(project, chapters, '', thin, [], 'forest'))

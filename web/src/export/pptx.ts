@@ -81,13 +81,15 @@ const SECTION_TITLES: Record<SlideKey, string> = {
 const CHARS_PER_LINE = 88
 const MAX_LINES = 12
 
-/** Splits bullets into page-sized groups. Pure, deterministic. */
-export function splitBullets(items: string[]): string[][] {
+/** Splits bullets into page-sized groups. Pure, deterministic. The per-line
+ *  character budget defaults to the full body width; sections narrowed by a
+ *  side image pass a proportionally smaller budget so nothing bleeds. */
+export function splitBullets(items: string[], charsPerLine: number = CHARS_PER_LINE): string[][] {
   const pages: string[][] = []
   let current: string[] = []
   let lines = 0
   for (const item of items) {
-    const itemLines = Math.max(1, Math.ceil(item.length / CHARS_PER_LINE))
+    const itemLines = Math.max(1, Math.ceil(item.length / charsPerLine))
     if (current.length && lines + itemLines > MAX_LINES) {
       pages.push(current)
       current = []
@@ -120,7 +122,11 @@ export async function buildPptx(
   // Count slides first for truthful footers: title, content (+ continued),
   // references (+ continued), thank-you, Q&A appendix.
   const sections = (Object.keys(SECTION_TITLES) as SlideKey[]).filter((k) => content.bullets[k].length > 0)
-  const contentPageCount = sections.reduce((n, k) => n + splitBullets(content.bullets[k]).length, 0)
+  // Sections with a side image render in a narrowed 7.2" body — their split
+  // budget shrinks proportionally so bullets never bleed past the image column.
+  const charsFor = (key: SlideKey): number =>
+    opts.images?.[key] ? Math.floor(CHARS_PER_LINE * 7.2 / (W - M * 2)) : CHARS_PER_LINE
+  const contentPageCount = sections.reduce((n, k) => n + splitBullets(content.bullets[k], charsFor(k)).length, 0)
   const refPages = Math.max(1, Math.ceil(references.length / 5))
   const qaSlides = parseQaSlides(defenseQa)
   const total = 1 + contentPageCount + refPages + 1 + qaSlides.length
@@ -171,7 +177,7 @@ export async function buildPptx(
 
   // ── Content sections, each with (continued) overflow pages ─────────────
   for (const key of sections) {
-    const pages = splitBullets(content.bullets[key])
+    const pages = splitBullets(content.bullets[key], charsFor(key))
     pages.forEach((items, i) => {
       const title = SECTION_TITLES[key] + (i > 0 ? ' (continued)' : '')
       if (key === 'objectives') {
