@@ -27,6 +27,7 @@ vi.mock('../export/pptx', () => ({
 import { downloadBlob } from '../export/download'
 import { generateStream, resolveReferences, fetchLogo, generateImage } from '../api'
 import { buildPptx, slideContentFromChapters } from '../export/pptx'
+import { buildDocx } from '../export/docx'
 
 const slideJson = JSON.stringify({
   aim: 'To detect theft.',
@@ -162,15 +163,37 @@ describe('Export screen — reference resolution', () => {
     expect(useAppStore.getState().references[0]).toMatchObject({ verified: true })
   })
 
-  it('second export reuses cached references — no repeat AI call', async () => {
+  it('DOCX export skips re-resolution when the store is already fresh (every extracted key known)', async () => {
     seedChapters()
-    useAppStore.getState().setReferences([{ key: 'k', apa: 'a', verified: false }])
+    // Fresh cache: the seeded entry's key matches the citation extracted from
+    // the chapter text ('Okonkwo, 2019') — nothing new to resolve.
+    useAppStore.getState().setReferences([{ key: 'Okonkwo, 2019', apa: 'Okonkwo, C. (2019). Campus security. J.', verified: true }])
     ;(generateStream as ReturnType<typeof vi.fn>).mockClear()
     render(<Export />)
     await userEvent.click(screen.getByRole('button', { name: /download docx/i }))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     expect(generateStream).not.toHaveBeenCalled()
     expect(resolveReferences).not.toHaveBeenCalled()
+  })
+
+  it('DOCX export resolves references even when the store is pre-seeded with unverified Layer-2 entries', async () => {
+    seedChapters()
+    // Layer-2 finalization stores extracted REFERENCES lines with an empty key —
+    // a non-empty store must NOT skip verification on the DOCX path.
+    useAppStore.getState().setReferences([{ key: '', apa: 'Okonkwo, C. (2019). Campus security.', verified: false }])
+    ;(generateStream as ReturnType<typeof vi.fn>).mockResolvedValueOnce(JSON.stringify({
+      entries: [{ key: 'Okonkwo, 2019', authors: 'Okonkwo, C.', year: '2019', title: 'Campus security', container: 'J' }],
+    }))
+    ;(resolveReferences as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { key: 'Okonkwo, 2019', apa: 'Okonkwo, C. (2019). Campus security. J.', verified: true, doi: '10.1/x' },
+    ])
+    render(<Export />)
+    await userEvent.click(screen.getByRole('button', { name: /download docx/i }))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(generateStream).toHaveBeenCalledTimes(1) // AI entries call ran
+    expect(resolveReferences).toHaveBeenCalledTimes(1)
+    const refs = (buildDocx as ReturnType<typeof vi.fn>).mock.calls[0][3]
+    expect(refs[0]).toMatchObject({ key: 'Okonkwo, 2019', verified: true })
   })
 
   it('resolution failure shows the error but never blocks a retry', async () => {

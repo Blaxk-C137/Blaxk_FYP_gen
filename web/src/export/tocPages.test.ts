@@ -36,4 +36,28 @@ describe('estimateTocEntries', () => {
     expect(entries[1].page).toBe(1)
     expect(entries[2].page).toBe(1)
   })
+
+  it('uses the real heading literal for level-1 entries, not the fabricated CHAPTER n', () => {
+    const chapters: Chapter[] = [
+      { number: 6, title: 'APPENDIX: QUESTIONNAIRE', status: 'done' as const, sections: [], text: 'APPENDIX: QUESTIONNAIRE\nHow often?' },
+    ]
+    const entries = estimateTocEntries(chapters, 0)
+    expect(entries[0]).toMatchObject({ text: 'APPENDIX: QUESTIONNAIRE', level: 1, page: 1 })
+  })
+
+  it('normal CHAPTER ONE headings still pass through as their own literal', () => {
+    const chapters: Chapter[] = [
+      { number: 1, title: 'INTRODUCTION', status: 'done' as const, sections: [], text: 'CHAPTER ONE\n1.1 Background\nIntro.' },
+    ]
+    const entries = estimateTocEntries(chapters, 0)
+    expect(entries[0]).toMatchObject({ text: 'CHAPTER ONE', level: 1, page: 1 })
+  })
+
+  it('falls back to CHAPTER n when the chapter text has no chapter heading block', () => {
+    const chapters: Chapter[] = [
+      { number: 2, title: 'LIT REVIEW', status: 'done' as const, sections: [], text: 'Just a paragraph body with no heading line.' },
+    ]
+    const entries = estimateTocEntries(chapters, 0)
+    expect(entries[0]).toMatchObject({ text: 'CHAPTER 2', level: 1, page: 1 })
+  })
 })

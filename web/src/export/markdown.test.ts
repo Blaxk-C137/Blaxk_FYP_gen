@@ -39,6 +39,15 @@ describe('attention spans', () => {
   it('leaves ordinary bracketed text untouched', () => {
     expect(parseInline('The result [see figure] was clear.').every((r) => !r.attention)).toBe(true)
   })
+
+  it('does not style lowercase bracketed prose like [address], but uppercase placeholders still match', () => {
+    const runs = parseInline('Ship to [address] by Friday. See [INSERT FIGURE HERE] for the setup.')
+    const att = runs.filter((r) => r.attention)
+    expect(att).toHaveLength(1)
+    expect(att[0].text).toBe('[INSERT FIGURE HERE]')
+    const plain = runs.filter((r) => !r.attention).map((r) => r.text).join('')
+    expect(plain).toContain('[address]')
+  })
 })
 
 describe('parseBlocks', () => {

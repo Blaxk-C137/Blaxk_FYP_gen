@@ -35,8 +35,7 @@ export function Export() {
     setBusy('docx')
     setError('')
     try {
-      let refs = useAppStore.getState().references
-      if (!refs.length) refs = await ensureReferences().catch((e) => {
+      const refs = await ensureReferences().catch((e) => {
         setError(e instanceof Error ? e.message : 'Reference verification failed')
         return useAppStore.getState().references
       })

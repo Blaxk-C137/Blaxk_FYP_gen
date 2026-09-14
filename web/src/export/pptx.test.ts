@@ -20,7 +20,7 @@ const references: ReferenceEntry[] = [
   { key: 'b', apa: 'Ola, D. (2023). Cheaper hardware. Hardware Letters, 2(1), 5-9.', verified: false },
 ]
 const content: SlideContent = {
-  aim: 'To build an IoT theft detection system for campus laboratories.',
+  aim: 'Investigate theft reliably.',
   bullets: {
     intro: ['Campus theft is common', 'Labs lose equipment yearly', 'Watchmen are unreliable'],
     problem: ['Manual watchmen are unreliable', 'Alarms are expensive'],
@@ -153,6 +153,21 @@ describe('buildPptx v2', () => {
     const thin: SlideContent = { aim: 'One aim.', bullets: { ...content.bullets, scope: [], significance: [], literature: [] }, notes: {}, images: [] }
     const { names } = await slidesOf(await buildPptx(project, chapters, '', thin, [], 'forest'))
     expect(names).toHaveLength(12) // title + 9 content + references (empty placeholder) + thank-you
+  })
+
+  it('renders the aim on its own slide when objectives bullets are empty', async () => {
+    const aimOnly: SlideContent = {
+      ...content,
+      bullets: { ...content.bullets, objectives: [] },
+    }
+    const withAim = await slidesOf(await buildPptx(project, chapters, '', aimOnly, [], 'forest'))
+    const titles = await Promise.all(withAim.names.map((_, i) => withAim.xml(i + 1)))
+    const aimSlide = titles.find((t) => t.includes('Aim and Objectives'))
+    expect(aimSlide).toBeTruthy()
+    expect(aimSlide).toContain('Investigate theft reliably.')
+    // One more content slide than with objectives bullets present: 12 content
+    // sections minus the emptied objectives plus the aim-only slide = same 12.
+    expect(withAim.names).toHaveLength(12 + 3) // title + 12 content + references + thank-you
   })
 })
 

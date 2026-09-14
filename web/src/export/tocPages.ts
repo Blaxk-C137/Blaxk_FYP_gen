@@ -4,6 +4,7 @@
  *  the AI never decides. */
 import type { Chapter } from '../state/store'
 import { parseBlocks } from './markdown'
+import type { Block } from './markdown'
 
 export interface TocEntry { text: string; level: 1 | 2; page: number }
 
@@ -34,8 +35,15 @@ export function estimateTocEntries(chapters: Chapter[], referencesCount: number)
     // Chapters start on a fresh page (pageBreakBefore).
     page++
     usedInches = 0
-    entries.push({ text: `CHAPTER ${ch.number}`, level: 1, page })
-    for (const block of parseBlocks(ch.text)) {
+    const blocks = parseBlocks(ch.text)
+    // The cached TOC must show the real heading literal ("CHAPTER ONE",
+    // "APPENDIX: QUESTIONNAIRE") — viewers that never refresh fields would
+    // otherwise freeze a fabricated "CHAPTER n" in place forever.
+    const heading =
+      blocks.find((b): b is Extract<Block, { kind: 'chapter' }> => b.kind === 'chapter')?.text ??
+      `CHAPTER ${ch.number}`
+    entries.push({ text: heading, level: 1, page })
+    for (const block of blocks) {
       switch (block.kind) {
         case 'section':
           entries.push({ text: block.text, level: 2, page })

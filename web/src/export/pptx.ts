@@ -83,7 +83,9 @@ const MAX_LINES = 12
 
 /** Splits bullets into page-sized groups. Pure, deterministic. The per-line
  *  character budget defaults to the full body width; sections narrowed by a
- *  side image pass a proportionally smaller budget so nothing bleeds. */
+ *  side image pass a proportionally smaller budget so nothing bleeds. An empty
+ *  section still yields one (empty) page — an aim-only objectives slide must
+ *  render even when there are no objective bullets. */
 export function splitBullets(items: string[], charsPerLine: number = CHARS_PER_LINE): string[][] {
   const pages: string[][] = []
   let current: string[] = []
@@ -99,7 +101,7 @@ export function splitBullets(items: string[], charsPerLine: number = CHARS_PER_L
     lines += itemLines
   }
   if (current.length) pages.push(current)
-  return pages
+  return pages.length ? pages : [[]]
 }
 
 export async function buildPptx(
@@ -121,7 +123,9 @@ export async function buildPptx(
 
   // Count slides first for truthful footers: title, content (+ continued),
   // references (+ continued), thank-you, Q&A appendix.
-  const sections = (Object.keys(SECTION_TITLES) as SlideKey[]).filter((k) => content.bullets[k].length > 0)
+  const sections = (Object.keys(SECTION_TITLES) as SlideKey[]).filter(
+    (k) => content.bullets[k].length > 0 || (k === 'objectives' && content.aim)
+  )
   // Sections with a side image render in a narrowed 7.2" body — their split
   // budget shrinks proportionally so bullets never bleed past the image column.
   const charsFor = (key: SlideKey): number =>

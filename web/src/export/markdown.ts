@@ -43,8 +43,11 @@ export function parseInline(text: string): Run[] {
   return split.length ? split : [{ text }]
 }
 
-/** Bracketed action placeholders the user must not miss. */
-const ATTENTION_RE = /\[(?:INSERT[^\]]*?|VERIFY|ADD[^\]]*?|TODO[^\]]*?)\]/gi
+/** Bracketed action placeholders the user must not miss. The prompts only
+ *  ever emit uppercase placeholders ([INSERT …], [VERIFY], [ADD …], [TODO …]),
+ *  so the match is case-sensitive — lowercase bracketed prose like "[address]"
+ *  or "[additional comments]" stays plain. */
+const ATTENTION_RE = /\[(?:INSERT[^\]]*?|VERIFY|ADD[^\]]*?|TODO[^\]]*?)\]/g
 
 function splitAttention(run: Run): Run[] {
   const out: Run[] = []
