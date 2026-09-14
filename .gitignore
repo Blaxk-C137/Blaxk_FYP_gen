@@ -1,11 +1,40 @@
-# .gitignore
+# --- Dependencies ---
 node_modules/
-dist-server/
 web/node_modules/
+
+# --- Build output ---
+dist-server/
 web/dist/
 web/dist-ssr/
-playwright-report/
-test-results/
-*.log
 *.tsbuildinfo
+
+# --- Test & E2E artifacts ---
+test-results/
+playwright-report/
+playwright/.cache/
+coverage/
+
+# --- Logs ---
+*.log
+npm-debug.log*
+
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+
+# --- Personal / local data (never commit) ---
+scrape.md
 docs/Projects/
+docs/test run/
+
+# --- Local tooling & editor ---
+.claude/settings.local.json
+.claude/worktrees/
+.vscode/
+.idea/
+*.swp
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
