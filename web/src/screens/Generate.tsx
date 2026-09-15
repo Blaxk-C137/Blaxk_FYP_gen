@@ -1,16 +1,24 @@
 import { useState } from 'react'
 import { useChapters, useAppStore } from '../state/store'
 import { useChapterGeneration } from '../useChapterGeneration'
+import { estimatePages } from '../export/tocPages'
 
 const STATUS_LABEL = { pending: 'Pending', streaming: 'Generating', done: 'Done' } as const
 
 const WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
 const toWord = (n: number) => WORDS[n - 1] ?? String(n)
 
+const TARGET_PAGES = { compact: 35, standard: 50, detailed: 70 } as const
+
 export function Generate({ onNextScreen }: { onNextScreen?: () => void } = {}) {
   const chapters = useChapters()
+  const project = useAppStore((s) => s.project)
   const { generate, generateAll, busy, continuing, continueChapter } = useChapterGeneration()
   const [error, setError] = useState('')
+
+  const pages = estimatePages(chapters)
+  const target = TARGET_PAGES[project.lengthPreset ?? 'standard']
+  const over = pages > target * 1.15
 
   function run(fn: () => Promise<void>) {
     setError('')
@@ -25,6 +33,9 @@ export function Generate({ onNextScreen }: { onNextScreen?: () => void } = {}) {
       <p className="lede">
         Generate each chapter — one at a time, or all five in sequence. If a stream drops, your
         partial text is kept and you can continue where it stopped.
+      </p>
+      <p className="note" role="status">
+        Estimated document length: about {pages} of {target} pages{over ? ' — over target; regenerate long chapters' : ''}.
       </p>
       {error && (
         <p role="alert" className="error">

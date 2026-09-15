@@ -188,8 +188,34 @@ describe('slideContentFromChapters v2', () => {
   })
 })
 
-describe('parseQaSlides (unchanged)', () => {
-  it('still yields one slide per chapter block', () => {
+describe('parseQaSlides', () => {
+  it('yields one slide per chapter block (digit and word chapter forms)', () => {
     expect(parseQaSlides(defenseQa)).toHaveLength(2)
+    const wordForm = 'CHAPTER ONE — INTRODUCTION\nQ: A?\nA: B.\n\nCHAPTER THREE — METHODOLOGY\nQ: C?\nA: D.'
+    const slides = parseQaSlides(wordForm)
+    expect(slides).toHaveLength(2)
+    expect(slides[0].title).toContain('CHAPTER ONE')
+  })
+
+  it('splits a 20-question block across multiple slides with (continued) titles — no slide exceeds the line budget', () => {
+    const qa = (n: number) =>
+      `Q: Question number ${n} about the methodology choices made in this project?\n` +
+      `A: Answer ${n} explains the reasoning behind that choice carefully and with enough words that the line certainly wraps past the one-hundred-and-seventeen character budget for a slide line.`
+    const text = ['CHAPTER THREE — METHODOLOGY', ...Array.from({ length: 20 }, (_, i) => qa(i + 1))].join('\n')
+    const slides = parseQaSlides(text)
+    expect(slides.length).toBeGreaterThanOrEqual(4)
+    expect(slides.some((s) => s.title.includes('(continued)'))).toBe(true)
+    for (const s of slides) {
+      const lines = s.body.reduce((n, l) => n + Math.max(1, Math.ceil(l.length / 117)), 0)
+      expect(lines).toBeLessThanOrEqual(14)
+    }
+    // All 40 Q/A lines survive the split.
+    expect(slides.reduce((n, s) => n + s.body.length, 0)).toBe(40)
+  })
+
+  it('a single block with no chapter markers gets the generic title', () => {
+    const slides = parseQaSlides('Q: One?\nA: Yes.')
+    expect(slides).toHaveLength(1)
+    expect(slides[0].title).toContain('Q&A Prep')
   })
 })

@@ -108,6 +108,43 @@ export function ProjectSetup({ onNext }: { onNext: () => void }) {
         </div>
 
         <div className="field">
+          <label htmlFor="logoUpload">University logo (optional)</label>
+          <input
+            id="logoUpload"
+            type="file"
+            accept="image/png,image/jpeg"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              const reader = new FileReader()
+              reader.onload = () => setProject({ logoDataUrl: String(reader.result) })
+              reader.readAsDataURL(file)
+            }}
+          />
+          <p className="hint">
+            {project.logoDataUrl ? (
+              <>
+                <img
+                  src={project.logoDataUrl}
+                  alt="Uploaded logo preview"
+                  style={{ height: 36, verticalAlign: 'middle', marginRight: '0.5rem' }}
+                />
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => setProject({ logoDataUrl: undefined })}
+                >
+                  Remove
+                </button>
+                {' — used on the title page.'}
+              </>
+            ) : (
+              'Used on the title page. If you skip this, fypgen tries to fetch the logo automatically.'
+            )}
+          </p>
+        </div>
+
+        <div className="field">
           <span className="label">Document structure</span>
           <div className="chips" role="radiogroup" aria-label="Discipline track">
             {TRACK_IDS.map((id) => (

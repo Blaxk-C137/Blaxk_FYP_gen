@@ -1,20 +1,28 @@
-/** Deterministic page estimation for the cached TOC. Word 12pt Times New
- *  Roman, double-spaced, 1" margins: ~27 lines/page at ~13 words/line ≈ 350
- *  words. Figures and charts reserve ~3"; tables ~0.5" + rows. Pure code —
- *  the AI never decides. */
+/** Deterministic page estimation for the cached TOC and the length budgets.
+ *  Word 12pt Times New Roman, double-spaced, 1" margins: ~27 lines/page at
+ *  ~9–10 words/line ≈ 250 words. Figures reserve the image height plus its
+ *  caption; tables ~0.5" + rows. Pure code — the AI never decides.
+ *
+ *  Calibrated 2026-09 against a real export (the cached TOC stopped at page
+ *  58 while Word laid the document out at 80 pages — the old 350 words/page
+ *  constant was off by exactly the 350/250 ratio). One estimator serves the
+ *  TOC cache, the generate-time page budget, and the on-screen page count. */
 import type { Chapter } from '../state/store'
 import { parseBlocks } from './markdown'
 import type { Block } from './markdown'
 
 export interface TocEntry { text: string; level: 1 | 2; page: number }
 
-const WORDS_PER_PAGE = 350
+/** Double-spaced 12pt Times New Roman prose words per page ( Letter/A4, 1" margins). */
+export const WORDS_PER_PAGE = 250
 const PAGE_INCHES = 9.0 // 11" page − 2" margins
-const FIGURE_INCHES = 3.2
+const LINE_INCHES = 0.33 // one double-spaced 12pt line
+const FIGURE_INCHES = 4.0 // 5.7"×3.3" image + caption line + spacing
 const TABLE_BASE_INCHES = 0.5
 const TABLE_ROW_INCHES = 0.35
 
-export function estimateTocEntries(chapters: Chapter[], referencesCount: number): TocEntry[] {
+/** Shared walk over chapters: emits TOC entries and tracks the final page. */
+function walk(chapters: Chapter[], withReferences: boolean): { entries: TocEntry[]; pages: number } {
   const entries: TocEntry[] = []
   // Pages count the body section only, which restarts at 1: the first chapter
   // already sits at the top of a fresh page, so start at 0 and pre-increment.
@@ -43,17 +51,18 @@ export function estimateTocEntries(chapters: Chapter[], referencesCount: number)
       blocks.find((b): b is Extract<Block, { kind: 'chapter' }> => b.kind === 'chapter')?.text ??
       `CHAPTER ${ch.number}`
     entries.push({ text: heading, level: 1, page })
+    consumeInches(LINE_INCHES) // the chapter heading line itself
     for (const block of blocks) {
       switch (block.kind) {
         case 'section':
           entries.push({ text: block.text, level: 2, page })
-          consumeWords(8) // the heading line itself
+          consumeInches(LINE_INCHES) // the heading line itself
           break
         case 'para':
-        case 'chapter':
-          consumeWords((block.kind === 'para' ? block.runs.map((r) => r.text).join('') : block.text)
-            .trim().split(/\s+/).filter(Boolean).length)
+          consumeWords(block.runs.map((r) => r.text).join('').trim().split(/\s+/).filter(Boolean).length)
           break
+        case 'chapter':
+          break // consumed once above
         case 'list':
           for (const item of block.items) consumeWords(item.split(/\s+/).length)
           break
@@ -67,9 +76,20 @@ export function estimateTocEntries(chapters: Chapter[], referencesCount: number)
       }
     }
   }
-  if (referencesCount >= 0) {
+  if (withReferences) {
     page++
     entries.push({ text: 'REFERENCES', level: 1, page })
   }
+  return { entries, pages: page }
+}
+
+export function estimateTocEntries(chapters: Chapter[], referencesCount: number): TocEntry[] {
+  const { entries } = walk(chapters, referencesCount >= 0)
   return entries
+}
+
+/** Estimated body pages for the generated chapters (fresh-page chapter starts,
+ *  prose, headings, figures, tables — the same model the cached TOC uses). */
+export function estimatePages(chapters: Chapter[]): number {
+  return walk(chapters, false).pages
 }

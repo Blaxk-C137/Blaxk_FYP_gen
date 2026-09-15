@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { systemPrompt, outlinePrompt, chapterPrompt, defenseQuestionsPrompt, slidesPrompt, referencesPrompt } from './prompts'
+import { systemPrompt, outlinePrompt, chapterPrompt, defenseQuestionsPrompt, slidesPrompt } from './prompts'
 import { EMPTY_PROJECT, initialChapterState } from './state/store'
 import { TRACKS } from './ai/tracks'
 
@@ -18,7 +18,8 @@ describe('prompts', () => {
     expect(s).toContain('CHAPTER ONE')
     expect(s).toContain('five-chapter format')
     // Citation + results integrity steering (spec Layer 1)
-    expect(s).toContain('[INSERT VERIFIED CITATION HERE]')
+    expect(s).toContain('ALLOWED SOURCES')
+    expect(s).toContain('Never invent')
     expect(s).toContain('REFERENCES list inside a chapter')
     // Chapter titles come from the track, not a hardcoded list
     expect(s).toContain(TRACKS['computing-engineering'].chapterTitles[2])
@@ -44,6 +45,21 @@ describe('prompts', () => {
     expect(nudged).toContain('more quantitative')
     const cont = chapterPrompt(project, chapters, chapters[0], undefined, 'partial text so far')
     expect(cont).toContain('partial text so far')
+  })
+
+  it('chapterPrompt renders the allowed-sources pool and the empty-pool rule', () => {
+    const chapters = initialChapterState()
+    const pool = [
+      { key: '(Okonkwo, 2019)', authors: 'Okonkwo, C.', year: '2019', title: 'Campus security systems', container: 'Nigerian J. Eng.', apa: 'Okonkwo, C. (2019). Campus security systems. Nigerian J. Eng.', doi: '10.1/x' },
+    ]
+    const withPool = chapterPrompt(project, chapters, chapters[0], undefined, undefined, pool)
+    expect(withPool).toContain('ALLOWED SOURCES')
+    expect(withPool).toContain('(Okonkwo, 2019)')
+    expect(withPool).toContain('Campus security systems')
+    // No pool → uncited chapters, never invented citations
+    const withoutPool = chapterPrompt(project, chapters, chapters[0])
+    expect(withoutPool).toContain('WITHOUT in-text citations')
+    expect(withoutPool).not.toContain('ALLOWED SOURCES')
   })
 
   it('defenseQuestionsPrompt asks for per-chapter questions', () => {
@@ -89,20 +105,5 @@ describe('slidesPrompt v2', () => {
     const p = slidesPrompt(project, thin)
     expect(p).toContain('LITERATURE REVIEW')
     expect(p).toContain('defines the concepts')
-  })
-})
-
-describe('referencesPrompt', () => {
-  it('carries the topic and every citation key, demands strict JSON', () => {
-    const p = referencesPrompt(
-      { ...EMPTY_PROJECT, topic: 'IoT theft detection' },
-      ['Okonkwo, 2019', 'Smith & Jones, 2021']
-    )
-    expect(p).toContain('IoT theft detection')
-    expect(p).toContain('Okonkwo, 2019')
-    expect(p).toContain('Smith & Jones, 2021')
-    expect(p).toContain('```json')
-    expect(p).toContain('never invent')
-    expect(p).toContain('"authors"')
   })
 })

@@ -66,6 +66,40 @@ describe('ordered list numbering', () => {
   })
 })
 
+describe('university logo', () => {
+  const png1x1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+  it('embeds the logo above the university name on the title page', async () => {
+    const blob = await buildDocx(project, chapters, 'abstract', [], { logo: { base64: png1x1, mime: 'image/png' } })
+    const doc = await docxXml(blob)
+    expect(doc).toContain('<w:drawing>')
+    // the drawing sits before the university name paragraph
+    const logoIdx = doc.indexOf('<w:drawing>')
+    const uniIdx = doc.indexOf('BAYERO UNIVERSITY KANO')
+    expect(logoIdx).toBeGreaterThan(-1)
+    expect(logoIdx).toBeLessThan(uniIdx)
+  })
+
+  it('no logo → no drawing on the title page', async () => {
+    const blob = await buildDocx(project, chapters, 'abstract', [])
+    const doc = await docxXml(blob)
+    expect(doc).not.toContain('<w:drawing>')
+  })
+})
+
+describe('footer page numbers', () => {
+  it('are explicitly black — no inherited or viewer-guessed color', async () => {
+    const blob = await buildDocx(project, chapters, 'abstract', references)
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob))
+    for (const f of Object.keys(zip.files).filter((x) => /^word\/footer\d*\.xml$/.test(x))) {
+      const footerXml = await zip.files[f]!.async('string')
+      // PAGE field present, and its run properties pin black.
+      expect(footerXml).toContain('PAGE')
+      expect(footerXml).toMatch(/<w:color w:val="000000"\/>[^]*?<w:fldChar w:fldCharType="begin"/)
+    }
+  })
+})
+
 describe('buildDocx', () => {
   it('produces a valid docx containing title page and chapter content', async () => {
     const blob = await buildDocx(project, chapters, 'An abstract.', references)

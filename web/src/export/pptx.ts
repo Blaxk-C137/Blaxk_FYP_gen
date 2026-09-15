@@ -4,19 +4,46 @@ import type { SlideContent, SlideKey } from '../ai/parseSlides'
 import { THEMES, type SlideTheme, type ThemeId } from './themes'
 
 // ---------------------------------------------------------------------------
-// Q&A appendix (unchanged behavior from the first export version)
+// Q&A appendix — chapter blocks paginated into slide-sized pages
 // ---------------------------------------------------------------------------
 
-/** Parses defenseQa text into one slide per chapter block. */
+// Q&A slides render at 18pt across the full 11.93" body (vs 24pt for content):
+// ~117 chars/line and ≤ 14 lines fit the 5.2" text box without bleeding.
+export const QA_CHARS_PER_LINE = 117
+export const QA_MAX_LINES = 14
+
+/** Parses defenseQa text into slide-sized pages. Chapter blocks accept digit
+ *  and word forms ("Chapter 3", "CHAPTER THREE"); a block whose Q/A lines
+ *  exceed one slide continues onto "(continued)" slides, so a 20-question
+ *  appendix can never bleed off the edge. */
 export function parseQaSlides(defenseQa: string): { title: string; body: string[] }[] {
   const slides: { title: string; body: string[] }[] = []
   if (!defenseQa.trim()) return slides
-  const blocks = defenseQa.split(/\n(?=Chapter \d)/i)
+  const blocks = defenseQa.split(/\n(?=chapter\s+(?:[1-5]|one|two|three|four|five)\b)/i)
   for (const block of blocks) {
     const lines = block.split('\n').map((l) => l.trim()).filter(Boolean)
     if (!lines.length) continue
-    const questions = lines.filter((l) => /^(Q:|A:)/.test(l))
-    if (questions.length) slides.push({ title: `Q&A Prep — ${lines[0]}`, body: questions })
+    const questions = lines.filter((l) => /^(Q:|A:)/i.test(l))
+    if (!questions.length) continue
+    const heading = /^chapter\b/i.test(lines[0]) ? lines[0].slice(0, 40) : ''
+    const base = `Q&A Prep${heading ? ` — ${heading}` : ''}`
+    let current: string[] = []
+    let usedLines = 0
+    let page = 0
+    const push = () => {
+      if (!current.length) return
+      slides.push({ title: page > 0 ? `${base} (continued)` : base, body: current })
+      current = []
+      usedLines = 0
+      page++
+    }
+    for (const q of questions) {
+      const itemLines = Math.max(1, Math.ceil(q.length / QA_CHARS_PER_LINE))
+      if (current.length && usedLines + itemLines > QA_MAX_LINES) push()
+      current.push(q)
+      usedLines += itemLines
+    }
+    push()
   }
   return slides
 }

@@ -5,7 +5,7 @@ import { PROVIDERS } from '../shared/constants.js'
 import type { ProviderId } from '../shared/constants.js'
 import { configureNetworking, describeNetworkError, hasNetworkCause, logNetworkError } from './net.js'
 import { findUniversityLogo } from './logo.js'
-import { resolveCitations } from './citations.js'
+import { resolveCitations, searchReferencePool } from './citations.js'
 import type { ReferenceInput } from '../shared/constants.js'
 
 interface GenerateBody {
@@ -142,6 +142,24 @@ export function registerAIRoutes(app: Hono) {
       return c.json(await findUniversityLogo(university))
     } catch {
       return c.json({ logo: null })
+    }
+  })
+
+  app.post('/api/reference-search', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { topic?: string; keywords?: unknown; max?: number }
+    const topic = body.topic?.trim()
+    if (!topic) return c.json({ error: 'topic is required' }, 400)
+    const keywords = Array.isArray(body.keywords)
+      ? body.keywords.filter((k): k is string => typeof k === 'string' && k.trim().length > 2).slice(0, 3)
+      : []
+    const max = typeof body.max === 'number' && body.max > 0 ? Math.min(60, Math.floor(body.max)) : 30
+    try {
+      return c.json({ pool: await searchReferencePool(topic, max, keywords) })
+    } catch (err) {
+      logNetworkError('/api/reference-search', 'crossref', err)
+      // An empty pool is a normal degradation (offline, Crossref down) — the
+      // client writes the chapter without citations rather than failing.
+      return c.json({ pool: [] })
     }
   })
 

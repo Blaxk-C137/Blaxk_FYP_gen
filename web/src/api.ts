@@ -1,4 +1,4 @@
-import type { Settings, ReferenceEntry } from './state/store'
+import type { Settings, ReferenceEntry, PoolEntry } from './state/store'
 import type { ReferenceInput } from '@shared/constants'
 
 export class ApiError extends Error {
@@ -91,5 +91,22 @@ export async function fetchLogo(university: string): Promise<{ base64: string; m
     return j.logo
   } catch {
     return null
+  }
+}
+
+/** Searches Crossref for real citable works on the topic. Empty pool on any
+ *  failure — the caller degrades to uncited chapters, never an error screen. */
+export async function searchReferences(topic: string, keywords: string[] = [], max = 30): Promise<PoolEntry[]> {
+  try {
+    const res = await fetch('/api/reference-search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ topic, keywords, max }),
+    })
+    if (!res.ok) return []
+    const j = (await res.json()) as { pool: PoolEntry[] }
+    return Array.isArray(j.pool) ? j.pool : []
+  } catch {
+    return []
   }
 }

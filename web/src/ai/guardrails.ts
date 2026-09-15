@@ -2,11 +2,14 @@
 // Pure functions, no I/O, never throw: unparseable text passes through flagged.
 // Spec: docs/superpowers/specs/2026-09-10-chapter-guardrails-design.md
 
+import { parseChartSpec } from '../export/markdown'
+
 export type ViolationRule =
   | 'section-numbering'
   | 'references-in-body'
   | 'heading-format'
   | 'duplicate-heading'
+  | 'raw-json'
 
 export interface Violation {
   rule: ViolationRule
@@ -84,29 +87,89 @@ export function fixChapterText(chapterNumber: number, text: string): ChapterFix 
       }
     }
 
+    // ---- 1b. Raw JSON guard --------------------------------------------
+    // The model sometimes emits chart specs in json-tagged fences or as bare
+    // JSON lines; both would leak raw JSON into the exported document.
+    // Chart-shaped content is promoted to a chart fence; anything else
+    // JSON-shaped is dropped. More than two fragments means the model is
+    // structurally confused — that regenerates.
+    let jsonDropped = 0
+    let jsonPromoted = 0
+    {
+      const out: string[] = []
+      for (let i = 0; i < lines.length; i++) {
+        const t = lines[i].trim()
+        const fenceTag = /^```(\w*)\s*$/.exec(t)?.[1]
+        if (fenceTag && /^json$/i.test(fenceTag)) {
+          let j = i + 1
+          const content: string[] = []
+          while (j < lines.length && lines[j].trim() !== '```') { content.push(lines[j]); j++ }
+          const raw = content.join('\n').trim()
+          if (parseChartSpec(raw)) { out.push('```chart', raw, '```'); jsonPromoted++ }
+          else jsonDropped++
+          i = j // skip past the closing fence (or the end of the text)
+          continue
+        }
+        if (/^\{.*\}$/.test(t)) {
+          if (parseChartSpec(t)) { out.push('```chart', t, '```'); jsonPromoted++ }
+          else jsonDropped++
+          continue
+        }
+        out.push(lines[i])
+      }
+      lines = out
+      if (jsonDropped + jsonPromoted > 0) {
+        violations.push({
+          rule: 'raw-json',
+          fixed: jsonDropped <= 2,
+          detail:
+            `Raw JSON in the chapter body (${jsonPromoted} promoted to charts, ${jsonDropped} removed). ` +
+            'Emit chart data only inside a fence tagged chart — never json-tagged fences or bare JSON.',
+        })
+      }
+    }
+
     // ---- 2. Section renumbering --------------------------------------
     let sectionIndex = 0
     let renumbered = 0
+    let demoted = 0
     lines = lines.map((line) => {
       const t = line.trim()
       const m = SECTION_RE.exec(t)
       if (!m) return line
-      // Only treat it as a section heading if the rest is a plausible title
-      // (not a numbered list item "1. Something" — that has only one number group).
-      const isSub = /^\d+\.\d+/.test(m[1]) || /\./.test(m[1])
-      if (!isSub) return line
+      // Single-group numbers ("1. Something") are list items — SECTION_RE
+      // already requires two or more groups, so they never reach here.
+      const depth = m[1].split('.').length // "3.2" → 2, "3.2.1" → 3
+      if (depth > 2) {
+        // Nigerian FYP format is two-level; a deeper heading becomes a bold
+        // lead-in paragraph instead of a numbered section.
+        demoted++
+        return `**${normalizeHeading(m[2])}**`
+      }
       sectionIndex++
       const expected = `${chapterNumber}.${sectionIndex}`
       if (m[1] !== expected) renumbered++
       return `${expected} ${normalizeHeading(m[2])}`
     })
-    if (renumbered > 0) {
+    if (renumbered > 0 || demoted > 0) {
       violations.push({
         rule: 'section-numbering',
         fixed: true,
         detail:
-          `Section numbers did not follow the chapter number (${renumbered} heading(s) renumbered). ` +
-          `Number sections ${chapterNumber}.1, ${chapterNumber}.2, … in order.`,
+          `Section numbers did not follow the chapter number (${renumbered} renumbered` +
+          `${demoted ? `, ${demoted} three-level heading(s) demoted to bold paragraphs` : ''}). ` +
+          `Number sections ${chapterNumber}.1, ${chapterNumber}.2, … in order; never three-level numbers like ${chapterNumber}.2.1.`,
+      })
+    }
+    // Section flood guard — the 2026-09-14 export carried chapter 3 sections
+    // 3.1–3.33 because the model had numbered list items like section headings.
+    if (sectionIndex > 12) {
+      violations.push({
+        rule: 'section-numbering',
+        fixed: false,
+        detail:
+          `${sectionIndex} numbered headings in one chapter — the outline calls for 4–8 sections. ` +
+          'Number ONLY section headings as {N}.1, {N}.2, …; never number paragraphs, list items, or hypotheses with chapter.section numbers.',
       })
     }
 

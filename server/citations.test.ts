@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { buildApa, resolveCitations } from './citations.js'
+import { buildApa, resolveCitations, searchReferencePool } from './citations.js'
 import type { ReferenceInput } from '../shared/constants.js'
 
 /** Test seam: force citation-js's constructor to throw, exercising the manual fallback. */
@@ -117,5 +117,62 @@ describe('resolveCitations', () => {
   it('entries without a title pass through unverified', async () => {
     const [r] = await resolveCitations([{ key: 'k', authors: 'A, B.', year: '2020', title: '' }])
     expect(r.verified).toBe(false)
+  })
+})
+
+describe('searchReferencePool', () => {
+  const crossrefItems = (n: number) => ({
+    message: { items: Array.from({ length: n }, (_, i) => ({
+      DOI: `10.1000/pool-${i}`,
+      title: [`Study ${i} on MIMO antenna design for 5G applications`],
+      author: [{ family: 'Author', given: String.fromCharCode(65 + (i % 26)) }],
+      issued: { 'date-parts': [[2020 + (i % 5)]] },
+      'container-title': ['IEEE Access'],
+      volume: '8', issue: '', page: `${100 + i}-${200 + i}`,
+    })) },
+  })
+
+  it('builds a pool of Crossref results with keys, APA lines, and DOIs', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(crossrefItems(5)), { headers: { 'content-type': 'application/json' } })))
+    const pool = await searchReferencePool('MIMO antenna for 5G', 5)
+    expect(pool).toHaveLength(5)
+    expect(pool[0].key).toMatch(/^\(Author, 20\d\d\)$/)
+    expect(pool[0].apa).toContain('Study 0 on MIMO antenna')
+    expect(pool[0].doi).toBe('10.1000/pool-0')
+    expect(pool[0].title).toContain('MIMO antenna')
+  })
+
+  it('dedupes by DOI', async () => {
+    const raw = crossrefItems(3)
+    raw.message.items[2].DOI = raw.message.items[0].DOI
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(raw), { headers: { 'content-type': 'application/json' } })))
+    const pool = await searchReferencePool('MIMO', 5)
+    expect(pool).toHaveLength(2)
+  })
+
+  it('skips items without authors or titles', async () => {
+    const raw = crossrefItems(2)
+    delete raw.message.items[1].author
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(raw), { headers: { 'content-type': 'application/json' } })))
+    const pool = await searchReferencePool('MIMO', 5)
+    expect(pool).toHaveLength(1)
+  })
+
+  it('network failure returns an empty pool, never throws', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed') }))
+    const pool = await searchReferencePool('MIMO', 5)
+    expect(pool).toEqual([])
+  })
+
+  it('searches multiple queries (topic + keywords) and merges the results', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls++
+      expect(String(url)).toContain('api.crossref.org/works')
+      return new Response(JSON.stringify(crossrefItems(2)), { headers: { 'content-type': 'application/json' } })
+    }))
+    const pool = await searchReferencePool('MIMO antenna', 10, ['array mutual coupling', '5G sub-6 GHz'])
+    expect(calls).toBe(3) // topic + 2 keyword queries
+    expect(pool.length).toBeGreaterThanOrEqual(2)
   })
 })

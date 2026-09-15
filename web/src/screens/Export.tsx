@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useAppStore, useProject, useChapters, useSettings } from '../state/store'
-import type { ReferenceEntry } from '../state/store'
-import { generateStream, generateImage, fetchLogo, resolveReferences } from '../api'
-import { systemPrompt, defenseQuestionsPrompt, slidesPrompt, referencesPrompt } from '../prompts'
+import type { ReferenceEntry, PoolEntry } from '../state/store'
+import { generateStream, generateImage, fetchLogo } from '../api'
+import { systemPrompt, defenseQuestionsPrompt, slidesPrompt } from '../prompts'
 import { trackFor } from '../ai/tracks'
 import { parseSlides } from '../ai/parseSlides'
 import type { SlideContent, SlideKey } from '../ai/parseSlides'
 import { extractCitations } from '../ai/extractCitations'
-import { parseReferences } from '../ai/parseReferences'
+import { puterImage } from '../ai/puterImages'
 import { buildDocx } from '../export/docx'
 import { buildPptx, slideContentFromChapters } from '../export/pptx'
 import { THEME_OPTIONS } from '../export/themes'
@@ -15,6 +15,19 @@ import { downloadBlob } from '../export/download'
 
 function slug(topic: string): string {
   return topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'fyp-project'
+}
+
+/** Manual upload wins over the scrape; absence degrades to null. */
+async function resolveLogo(
+  project: ReturnType<typeof useProject>
+): Promise<{ base64: string; mime: string } | null> {
+  const dataUrl = project.logoDataUrl
+  if (dataUrl?.startsWith('data:image/')) {
+    const mime = dataUrl.slice(5, dataUrl.indexOf(';'))
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+    if (mime && base64) return { base64, mime }
+  }
+  return project.university ? fetchLogo(project.university) : null
 }
 
 export function Export() {
@@ -31,17 +44,20 @@ export function Export() {
   const [error, setError] = useState('')
   const [pptxFailed, setPptxFailed] = useState(false)
 
+  /** Free Puter image first; the API-key path is the fallback. */
+  const imageChain = async (prompt: string): Promise<string | null> =>
+    (await puterImage(prompt)) ?? (await generateImage(settings, prompt))
+
   async function docx() {
     setBusy('docx')
     setError('')
     try {
-      const refs = await ensureReferences().catch((e) => {
-        setError(e instanceof Error ? e.message : 'Reference verification failed')
-        return useAppStore.getState().references
-      })
+      const refs = ensureReferences()
+      const logo = await resolveLogo(project)
       downloadBlob(
         await buildDocx(project, chapters, abstract, refs, {
-          imageFor: (prompt) => generateImage(settings, prompt),
+          imageFor: imageChain,
+          logo,
         }),
         `${slug(project.topic)}.docx`
       )
@@ -74,20 +90,26 @@ export function Export() {
     return content
   }
 
-  async function ensureReferences(): Promise<ReferenceEntry[]> {
+  /** References = pool entries the chapters actually cited. Pool entries come
+   *  from Crossref, so a match is verified by construction — no AI recall, no
+   *  re-verification round-trip. Citations missing from the pool (the model
+   *  disobeyed, or the student edited text by hand) are simply not listed. */
+  function ensureReferences(): ReferenceEntry[] {
     const current = useAppStore.getState().references
+    const pool = useAppStore.getState().referencePool
     const keys = extractCitations(chapters.map((c) => c.text).join('\n'))
-    if (!keys.length) return current
-    // Cached: we already have entries and no new keys appeared.
-    const known = new Set(current.map((r) => r.key))
-    if (current.length && keys.every((k) => known.has(k))) return current
-    setPhase('Verifying references…')
-    const track = trackFor(project.track, project.courseOfStudy, project.fieldOfStudy)
-    const raw = await generateStream(settings, systemPrompt(track), referencesPrompt(project, keys), () => {})
-    const drafts = parseReferences(raw)
-    const entries = await resolveReferences(drafts)
-    // Keep any previously verified entries not covered this round.
-    const merged = [...current.filter((r) => r.verified && !entries.some((e) => e.key === r.key)), ...entries]
+    if (!keys.length || !pool.length) return current
+    // Pool keys are "(Author, 2020)"; extractCitations yields "Author, 2020".
+    const byKey = new Map(pool.map((p) => [p.key.replace(/^\(|\)$/g, ''), p]))
+    const cited = keys
+      .map((k) => byKey.get(k))
+      .filter((p): p is PoolEntry => Boolean(p))
+    if (!cited.length) return current
+    const entries: ReferenceEntry[] = cited.map((p) => ({
+      key: p.key, apa: p.apa, verified: true, doi: p.doi,
+    }))
+    // Keep manual/Layer-2 entries that don't duplicate a pool entry.
+    const merged = [...current.filter((r) => !entries.some((e) => e.apa === r.apa)), ...entries]
     useAppStore.getState().setReferences(merged)
     return merged
   }
@@ -99,14 +121,14 @@ export function Export() {
     try {
       const qa = await ensureDefenseQa()
       const content = await ensureSlideContent()
-      const refs = await ensureReferences().catch(() => useAppStore.getState().references)
+      const refs = ensureReferences()
       setPhase('Preparing slide assets…')
       const [logo, images] = await Promise.all([
-        project.university ? fetchLogo(project.university) : Promise.resolve(null),
+        resolveLogo(project),
         (async () => {
           const out: Partial<Record<SlideKey, string>> = {}
           for (const img of content.images) {
-            const data = await generateImage(settings, img.prompt)
+            const data = await imageChain(img.prompt)
             if (data) out[img.slide] = data
           }
           return out
@@ -205,6 +227,10 @@ export function Export() {
         </div>
       </div>
       {error && <p role="alert" className="error">{error}</p>}
+      <p className="note">
+        Figures are generated free via Puter — a sign-in window opens the first time (your own
+        free credits). If Puter is unavailable, your API key is used as a fallback.
+      </p>
       {defenseQa && (
         <details>
           <summary>Defense Q&amp;A prep</summary>

@@ -11,6 +11,8 @@ export interface ProjectInfo {
   department: string; supervisor: string; degree: string; session: string
   fieldOfStudy?: string; courseOfStudy?: string; track?: TrackId
   lengthPreset?: LengthPreset
+  /** Data-URL of a manually uploaded university logo; wins over the scrape. */
+  logoDataUrl?: string
 }
 export interface Section { heading: string; description: string }
 export type ChapterStatus = 'pending' | 'streaming' | 'done'
@@ -25,6 +27,18 @@ export const EMPTY_PROJECT: ProjectInfo = {
 }
 
 export interface ReferenceEntry { key: string; apa: string; verified: boolean; doi?: string }
+
+/** One real, Crossref-sourced work the model may cite. The pool is fetched
+ *  before generation; chapters cite only from it. */
+export interface PoolEntry {
+  key: string          // "(Author, 2020)" citation key exactly as cited
+  authors: string      // "Family, F. & Family, F."
+  year: string
+  title: string
+  container?: string
+  apa: string          // fully formatted APA line
+  doi?: string
+}
 
 export const STANDARD_CHAPTERS = [
   'INTRODUCTION', 'LITERATURE REVIEW', 'METHODOLOGY',
@@ -43,6 +57,8 @@ interface AppState {
   chapters: Chapter[]
   abstract: string
   references: ReferenceEntry[]
+  referencePool: PoolEntry[]
+  poolLoaded: boolean
   slideTheme: ThemeId
   setSettings: (s: Settings) => void
   setProject: (p: Partial<ProjectInfo>) => void
@@ -51,6 +67,7 @@ interface AppState {
   updateChapter: (number: number, patch: Partial<Chapter>) => void
   appendChapterText: (number: number, chunk: string) => void
   setReferences: (refs: ReferenceEntry[]) => void
+  setReferencePool: (pool: PoolEntry[]) => void
   setSlideTheme: (t: ThemeId) => void
   reset: () => void
 }
@@ -63,6 +80,8 @@ export const useAppStore = create<AppState>()(
       chapters: initialChapterState(),
       abstract: '',
       references: [],
+      referencePool: [],
+      poolLoaded: false,
       slideTheme: 'forest',
       setSettings: (s) => set({ settings: s }),
       setProject: (p) => set((st) => ({ project: { ...st.project, ...p } })),
@@ -77,9 +96,13 @@ export const useAppStore = create<AppState>()(
           chapters: st.chapters.map((c) => (c.number === number ? { ...c, text: c.text + chunk } : c)),
         })),
       setReferences: (refs) => set({ references: refs }),
+      setReferencePool: (pool) => set({ referencePool: pool, poolLoaded: true }),
       setSlideTheme: (t) => set({ slideTheme: t }),
       reset: () =>
-        set({ project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '', references: [] }),
+        set({
+          project: EMPTY_PROJECT, chapters: initialChapterState(), abstract: '',
+          references: [], referencePool: [], poolLoaded: false,
+        }),
     }),
     {
       name: 'fypgen-state',

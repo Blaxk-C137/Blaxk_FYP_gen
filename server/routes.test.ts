@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { Hono } from 'hono'
 import { registerAIRoutes } from './routes.js'
 import { gemini } from './providers/gemini.js'
+import * as citations from './citations.js'
 
 vi.spyOn(gemini, 'testKey').mockResolvedValue({ ok: true })
 vi.spyOn(gemini, 'stream').mockImplementation(async function* () {
@@ -157,5 +158,45 @@ describe('POST /api/generate-image', () => {
     })
     expect(res.status).toBe(502)
     expect((await res.json()).error).toBe('safety block')
+  })
+})
+
+describe('POST /api/reference-search', () => {
+  it('returns the Crossref pool for the topic', async () => {
+    const spy = vi.spyOn(citations, 'searchReferencePool').mockResolvedValueOnce([
+      { key: '(Author, 2020)', authors: 'Author, A.', year: '2020', title: 'A real paper', apa: 'Author, A. (2020). A real paper. IEEE Access.', doi: '10.1/x' },
+    ])
+    const res = await app().request('/api/reference-search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ topic: 'MIMO antennas' }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      pool: [expect.objectContaining({ key: '(Author, 2020)', doi: '10.1/x' })],
+    })
+    expect(spy).toHaveBeenCalledWith('MIMO antennas', expect.anything(), expect.anything())
+    spy.mockRestore()
+  })
+
+  it('empty pool on network failure — 200 with an empty list, not an error', async () => {
+    const spy = vi.spyOn(citations, 'searchReferencePool').mockResolvedValueOnce([])
+    const res = await app().request('/api/reference-search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ topic: 'anything' }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ pool: [] })
+    spy.mockRestore()
+  })
+
+  it('400 when the topic is missing', async () => {
+    const res = await app().request('/api/reference-search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
   })
 })

@@ -37,6 +37,59 @@ describe('fixChapterText — renumbering', () => {
     expect(fix.text).toContain('1. Background of the Study')
     expect(fix.violations).not.toContainEqual(expect.objectContaining({ rule: 'section-numbering' }))
   })
+
+  it('demotes three-level headings (3.2.1) to bold lead-in paragraphs — never a numbered section', () => {
+    const raw = ['CHAPTER THREE: METHODOLOGY', '3.1 System Design', 'Body text.', '3.1.2 Detailed sub design', 'More body.'].join('\n')
+    const fix = fixChapterText(3, raw)
+    expect(fix.text).toContain('**Detailed sub design**')
+    expect(fix.text).not.toMatch(/3\.1\.2/)
+    expect(fix.violations).toContainEqual(
+      expect.objectContaining({ rule: 'section-numbering', fixed: true })
+    )
+  })
+
+  it('flags a section flood (> 12 numbered headings) as a serious violation — the model numbered list items as sections', () => {
+    // Real case from the 2026-09-14 export: chapter 3 carried sections 3.1–3.33.
+    const raw = ['CHAPTER THREE: METHODOLOGY', ...Array.from({ length: 15 }, (_, i) => `3.${i + 1} Item ${i + 1}\nBody.`)].join('\n')
+    const fix = fixChapterText(3, raw)
+    expect(seriousViolations(fix.violations).some((v) => v.rule === 'section-numbering')).toBe(true)
+  })
+
+  it('12 or fewer sections raise no flood violation', () => {
+    const raw = ['CHAPTER THREE: METHODOLOGY', ...Array.from({ length: 12 }, (_, i) => `3.${i + 1} Item ${i + 1}\nBody.`)].join('\n')
+    const fix = fixChapterText(3, raw)
+    expect(seriousViolations(fix.violations).some((v) => v.rule === 'section-numbering')).toBe(false)
+  })
+})
+
+describe('fixChapterText — raw JSON guard', () => {
+  it('promotes a ```json chart fence to a ```chart fence', () => {
+    const raw = ['CHAPTER FOUR: RESULTS', '4.1 Findings', 'Text.', '```json', '{"type":"bar","title":"Latency","data":{"A":1,"B":2}}', '```'].join('\n')
+    const fix = fixChapterText(4, raw)
+    expect(fix.text).toContain('```chart')
+    expect(fix.text).not.toContain('```json')
+  })
+
+  it('drops a ```json fence whose content is not a chart', () => {
+    const raw = ['CHAPTER FOUR: RESULTS', '4.1 Findings', 'Text.', '```json', '{"message":"hello"}', '```'].join('\n')
+    const fix = fixChapterText(4, raw)
+    expect(fix.text).not.toContain('```json')
+    expect(fix.text).not.toContain('hello')
+    expect(fix.violations).toContainEqual(expect.objectContaining({ rule: 'raw-json', fixed: true }))
+  })
+
+  it('promotes a bare single-line chart JSON object to a chart fence', () => {
+    const raw = 'CHAPTER FOUR: RESULTS\n4.1 Findings\nText.\n{"type":"pie","title":"Share","data":{"X":3,"Y":4}}'
+    const fix = fixChapterText(4, raw)
+    expect(fix.text).toContain('```chart')
+    expect(fix.text).toContain('"type":"pie"')
+  })
+
+  it('drops bare non-chart JSON lines', () => {
+    const raw = 'CHAPTER FOUR: RESULTS\n4.1 Findings\nText.\n{"unrelated": true}'
+    const fix = fixChapterText(4, raw)
+    expect(fix.text).not.toContain('unrelated')
+  })
 })
 
 describe('fixChapterText — reference extraction', () => {

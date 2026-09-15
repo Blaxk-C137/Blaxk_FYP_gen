@@ -34,6 +34,8 @@ export function referencesSection(_chapters: Chapter[] = [], references: Referen
 export interface DocxOptions {
   /** Returns a base64 PNG for a figure prompt, or null to keep the placeholder. */
   imageFor?: (prompt: string) => Promise<string | null>
+  /** University logo shown at the top of the title page. */
+  logo?: { base64: string; mime: string } | null
 }
 
 const body = (text: string, opts: { bold?: boolean; color?: string; heading?: (typeof HeadingLevel)[keyof typeof HeadingLevel]; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; pageBreakBefore?: boolean } = {}) =>
@@ -182,14 +184,15 @@ function chapterBlockChildren(
 // 1-inch margins.
 const PAGE = { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } }
 
-/** Footer with centered page numbers. */
+/** Footer with centered page numbers — color pinned to black so no viewer or
+ *  inherited style can tint the field red. */
 function numberedFooter() {
   return new Footer({
     children: [
       new Paragraph({
         alignment: AlignmentType.CENTER,
         children: [
-          new TextRun({ children: [PageNumber.CURRENT], font: 'Times New Roman', size: 24 }),
+          new TextRun({ children: [PageNumber.CURRENT], font: 'Times New Roman', size: 24, color: '000000' }),
         ],
       }),
     ],
@@ -217,6 +220,18 @@ export async function buildDocx(
   const prelim: (Paragraph | TableOfContents)[] = []
   // Preliminary headings are plain bold paragraphs (not Heading styles) so the
   // live TOC field covers chapters, sections, and REFERENCES only.
+  if (opts.logo) {
+    // ~1.2" square, centered above the university name.
+    const LOGO_EMUS = { width: 110, height: 110 }
+    prelim.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new ImageRun({
+        type: opts.logo.mime.includes('jpeg') ? 'jpg' : 'png',
+        data: opts.logo.base64,
+        transformation: LOGO_EMUS,
+      })],
+    }))
+  }
   prelim.push(body(project.university.toUpperCase(), { bold: true, align: AlignmentType.CENTER }))
   prelim.push(body(project.courseOfStudy ?? project.department, { align: AlignmentType.CENTER }))
   prelim.push(body('', {}))

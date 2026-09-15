@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from '../state/store'
-import { generateStream } from '../api'
+import { generateStream, searchReferences } from '../api'
 import { systemPrompt, outlinePrompt } from '../prompts'
 import { trackFor } from '../ai/tracks'
 import { parseOutline } from '../ai/parseOutline'
@@ -15,7 +15,7 @@ export function Outline({ onNext }: { onNext: () => void }) {
   const setOutline = useAppStore((s) => s.setOutline)
   const updateChapter = useAppStore((s) => s.updateChapter)
   const settings = useAppStore((s) => s.settings)
-  const [state, setState] = useState<'generating' | 'ready' | 'error'>('generating')
+  const [state, setState] = useState<'generating' | 'ready' | 'error' | 'pool' | 'pool-empty'>('generating')
   const [error, setError] = useState('')
 
   async function generate() {
@@ -34,6 +34,22 @@ export function Outline({ onNext }: { onNext: () => void }) {
       setError(e instanceof Error ? e.message : 'Generation failed')
       setState('error')
     }
+  }
+
+  /** Before chapter generation: fetch the verified source pool from Crossref
+   *  (topic + the outline's most distinctive section headings as keywords).
+   *  Chapters then cite only from this pool. An empty pool (offline, Crossref
+   *  down) degrades to uncited chapters — offered as an explicit choice. */
+  async function approve() {
+    setState('pool')
+    const keywords = chapters
+      .flatMap((c) => c.sections.map((s) => s.heading))
+      .filter((h) => h.trim().split(/\s+/).length >= 2)
+      .slice(0, 3)
+    const pool = await searchReferences(project.topic, keywords)
+    useAppStore.getState().setReferencePool(pool)
+    if (pool.length) onNext()
+    else setState('pool-empty')
   }
 
   useEffect(() => {
@@ -62,6 +78,36 @@ export function Outline({ onNext }: { onNext: () => void }) {
         <div className="actions-row">
           <button className="primary" onClick={() => void generate()}>
             Try again
+          </button>
+        </div>
+      </main>
+    )
+
+  if (state === 'pool')
+    return (
+      <main className="container">
+        <h1>Outline</h1>
+        <div className="generating">
+          <p className="pulse">Loading verified sources</p>
+          <p>Searching Crossref for real citable works on your topic.</p>
+        </div>
+      </main>
+    )
+  if (state === 'pool-empty')
+    return (
+      <main className="container">
+        <h1>Outline</h1>
+        <p role="alert" className="error">
+          Couldn&apos;t load a verified source pool (you may be offline, or Crossref is
+          unreachable). Chapters will be written without in-text citations rather than with
+          invented ones.
+        </p>
+        <div className="actions-row">
+          <button className="primary" onClick={() => void approve()}>
+            Retry
+          </button>
+          <button className="secondary" onClick={onNext}>
+            Continue without citations
           </button>
         </div>
       </main>
@@ -130,7 +176,7 @@ export function Outline({ onNext }: { onNext: () => void }) {
         </details>
       )}
       <div className="actions-row">
-        <button className="primary" onClick={onNext}>
+        <button className="primary" onClick={() => void approve()}>
           Approve outline & generate chapters
         </button>
         <button className="secondary" onClick={() => void generate()}>

@@ -20,8 +20,11 @@ never leave your computer except to talk to the AI provider you choose.
   appendix.
 - 📝 **Formatted Word export** — Times New Roman 12, double-spaced, auto table of
   contents, APA 7 references.
-- 📚 **Verified references** — citations are resolved and checked against Crossref, with
-  review badges for anything that can't be confirmed.
+- 📚 **Real references only** — before writing, fypgen searches Crossref for actual
+  published work on your topic and the AI may cite only from that pool. No invented
+  citations; if nothing real fits a claim, it stays uncited.
+- 🖼️ **Free figures** — diagrams are generated free via Puter (a one-time sign-in
+  window; your API key is only used as a fallback).
 - 🔑 **Bring your own key** — Google Gemini (has a free tier), OpenAI, or Anthropic.
 - 🔒 **Local & private** — the server runs on `127.0.0.1`; your key is stored only in
   your browser's `localStorage` and sent only to your chosen provider.
@@ -87,10 +90,23 @@ HTTPS_PROXY=http://your-proxy:port npx fypgen
 
 ## Important — verify before you submit
 
-- **References are AI-generated.** Even with Crossref verification, citations can be
-  wrong or fabricated. **Check every reference before submission.**
+- **Spot-check your references.** They come from Crossref (real published work), but the
+  AI decides *where* they're cited — make sure each one actually supports the claim it
+  sits next to.
 - fypgen is a **drafting aid**. Review and edit everything it produces, and follow your
   institution's rules on the use of AI in submitted work.
+
+## Troubleshooting
+
+- **Page numbers look red in Word** — fypgen writes them with an explicit black color.
+  If they still show red, it's your Word installation: a modified style or tracked
+  changes display. Select the footer → Home → Font Color → Automatic fixes it.
+- **No figures in the export** — figure generation goes through Puter (free, one-time
+  sign-in) and falls back to your API key. If both fail — or you declined the Puter
+  sign-in — the export shows a placeholder box you can replace manually.
+- **Chapters came out with no citations** — the Crossref source pool couldn't be
+  fetched (offline, or Crossref unreachable). fypgen writes uncited chapters rather
+  than inventing sources; regenerate after your connection is back.
 
 ## Development
 

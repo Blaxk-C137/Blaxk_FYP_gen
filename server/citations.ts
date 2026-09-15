@@ -131,3 +131,68 @@ async function resolveOne(e: ReferenceInput): Promise<CitationResult> {
 export async function resolveCitations(entries: ReferenceInput[]): Promise<CitationResult[]> {
   return Promise.all(entries.slice(0, 100).map(resolveOne))
 }
+
+// ---------------------------------------------------------------------------
+// Reference pool — retrieval, not recall. Before generation the app fetches
+// real Crossref works on the topic so chapters can only cite verified sources.
+// ---------------------------------------------------------------------------
+
+export interface PoolResult {
+  key: string // "(Family, 2020)" — the exact in-text citation key
+  authors: string
+  year: string
+  title: string
+  container?: string
+  apa: string
+  doi: string
+}
+
+/** "(Family, 2020)" / "(Family & Family, 2021)" — first author family + year. */
+function poolKey(item: CrossrefItem): string | null {
+  const family = item.author?.[0]?.family
+  const year = item.issued?.['date-parts']?.[0]?.[0]
+  if (!family || year === undefined) return null
+  return `(${family}, ${year})`
+}
+
+async function poolQuery(query: string, rows: number): Promise<CrossrefItem[]> {
+  const url =
+    `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(query)}` +
+    `&rows=${rows}&mailto=fypgen-app@users.noreply.github.com`
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+    if (!res.ok) return []
+    const j = (await res.json()) as { message?: { items?: CrossrefItem[] } }
+    return j.message?.items ?? []
+  } catch {
+    return [] // offline / crossref down → empty, never throws
+  }
+}
+
+/** Searches Crossref for the topic plus optional keyword refinements and
+ *  returns a de-duplicated pool of citable real works (topic query first,
+ *  keyword queries widen it). */
+export async function searchReferencePool(topic: string, max = 30, keywords: string[] = []): Promise<PoolResult[]> {
+  const queries = [topic, ...keywords].slice(0, 4)
+  const perQuery = Math.max(5, Math.ceil(max / queries.length))
+  const batches = await Promise.all(queries.map((q) => poolQuery(q, perQuery)))
+  const byDoi = new Map<string, PoolResult>()
+  for (const item of batches.flat()) {
+    if (!item.DOI || !item.title?.[0] || !item.author?.length) continue
+    if (byDoi.has(item.DOI)) continue
+    const key = poolKey(item)
+    if (!key) continue
+    const input = fromCrossref(item, { key, authors: '', year: '', title: '' })
+    byDoi.set(item.DOI, {
+      key,
+      authors: input.authors,
+      year: input.year,
+      title: input.title,
+      container: input.container || undefined,
+      apa: buildApa(input),
+      doi: item.DOI,
+    })
+    if (byDoi.size >= max) break
+  }
+  return [...byDoi.values()]
+}

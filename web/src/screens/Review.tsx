@@ -1,22 +1,29 @@
 import { useChapters, useAppStore } from '../state/store'
+import { estimatePages } from '../export/tocPages'
 
 const WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
 const toWord = (n: number) => WORDS[n - 1] ?? String(n)
 
 const words = (t: string) => (t ? t.trim().split(/\s+/).length : 0)
 
+const TARGET_PAGES = { compact: 35, standard: 50, detailed: 70 } as const
+
 export function Review({ onNext }: { onNext: () => void }) {
   const chapters = useChapters()
   const updateChapter = useAppStore((s) => s.updateChapter)
+  const project = useAppStore((s) => s.project)
   const references = useAppStore((s) => s.references)
   const total = chapters.reduce((n, c) => n + words(c.text), 0)
   const verifiedCount = references.filter((r) => r.verified).length
+  const pages = estimatePages(chapters)
+  const target = TARGET_PAGES[project.lengthPreset ?? 'standard']
 
   return (
     <main className="container">
       <h1>Review your project</h1>
       <p className="lede">
-        Total: {total} words · edit any chapter inline — changes save automatically as you type.
+        Total: {total} words · about {pages} of {target} pages · edit any chapter inline —
+        changes save automatically as you type.
       </p>
       {chapters.map((ch) => (
         <section key={ch.number} className="chapter">

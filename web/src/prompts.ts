@@ -1,18 +1,20 @@
-import type { Chapter, ProjectInfo, LengthPreset } from './state/store'
+import type { Chapter, ProjectInfo, LengthPreset, PoolEntry } from './state/store'
 import { trackFor } from './ai/tracks'
 import type { Track } from './ai/tracks'
 
 // ---------------------------------------------------------------------------
-// Length presets — calibrated to ~250 words per double-spaced page (A4, 12pt).
-// budgets[chapterIndex] is the target word count for that chapter.
+// Length presets. Word budgets target prose at ~250 words per double-spaced
+// page; the page estimate (estimatePages) additionally counts chapter page
+// breaks, headings, figures, and tables, so the budgets land near the preset's
+// page target once furniture is included.
 // ---------------------------------------------------------------------------
 
 export interface LengthBudget { label: string; pages: string; budgets: [number, number, number, number, number] }
 
 export const LENGTH_PRESETS: Record<LengthPreset, LengthBudget> = {
-  compact: { label: 'Compact (~35 pages)', pages: '≈35 pages · 8,500 words', budgets: [1500, 2000, 1500, 2000, 1500] },
-  standard: { label: 'Standard (~50 pages)', pages: '≈50 pages · 12,500 words', budgets: [2000, 3000, 2500, 3000, 2000] },
-  detailed: { label: 'Detailed (~70 pages)', pages: '≈70 pages · 17,500 words', budgets: [2500, 4000, 3500, 4500, 3000] },
+  compact: { label: 'Compact (~35 pages)', pages: '≈35 pages · 7,000 words', budgets: [1200, 1700, 1200, 1700, 1200] },
+  standard: { label: 'Standard (~50 pages)', pages: '≈50 pages · 10,500 words', budgets: [1600, 2600, 2100, 2600, 1600] },
+  detailed: { label: 'Detailed (~70 pages)', pages: '≈70 pages · 15,000 words', budgets: [2200, 3500, 3000, 3800, 2500] },
 }
 
 /** The maximum acceptable length before the overshoot retry fires. */
@@ -29,9 +31,10 @@ export function chapterBudget(preset: LengthPreset, chapterNumber: number): numb
 const MARKUP_RULES = [
   'Use markdown for emphasis: **bold** for key terms, *italic* for titles of works and emphasis.',
   'Present tabular data as markdown pipe tables.',
-  'Use "-" bullet lists and "1." numbered lists where they aid clarity.',
+  'Use "-" bullet lists and "1." numbered lists where they aid clarity. Never prefix paragraphs or list items with chapter.section numbers like 3.4 — those numbers are reserved for section headings.',
   'For any data visualization, emit a fenced code block tagged chart containing a single JSON object on one line:',
   '```chart\n{"type": "bar|pie|line", "title": "Figure title", "ylabel": "optional axis label", "data": {"Category": 123, ...}}\n```',
+  'Never emit fenced blocks tagged json — chart JSON goes only inside a chart-tagged fence, never bare in the text.',
   'Use chart blocks for distributions and comparisons that read better graphically; keep the corresponding values in a table or text as well.',
   'For diagrams and illustrations (architecture, flow, setup), emit a fenced code block tagged figure containing a one-to-two-sentence description of the diagram to generate. Use figures sparingly — at most one per chapter.',
   'Never write HTML, LaTeX, or ASCII-art diagrams.',
@@ -44,8 +47,9 @@ export function systemPrompt(track: Track): string {
     `You produce work in the standard Nigerian five-chapter format: ${titles}.`,
     'Write as a strong Nigerian final-year student would: formal academic register, clear, direct — never stilted or padded.',
     'Use APA 7 in-text citations where claims need sources. Include Nigerian context where natural (Nigerian universities, institutions, infrastructure, market data).',
-    'Citation integrity: cite only genuinely well-known real works. Never invent authors, years, journals, page numbers, DOIs, or URLs. When unsure of a real source, write [INSERT VERIFIED CITATION HERE] instead of a plausible-looking fake.',
-    'Structure: each chapter begins with "CHAPTER <WORD>" on its own line, followed by sections numbered {N}.1, {N}.2, … that follow the chapter number. Never number sections with a different chapter’s number. Do not repeat a heading within a chapter.',
+    'Citation integrity: cite only works supplied in the ALLOWED SOURCES list of the task, using the exact (Author, Year) key given there. Never invent a citation, and never cite from memory. If the list lacks a source for a claim, state the claim without a citation.',
+    'Structure: each chapter begins with "CHAPTER <WORD>" on its own line, followed by sections numbered {N}.1, {N}.2, … that follow the chapter number. Use exactly two levels — a chapter and its numbered sections. Never emit three-level numbers like 3.2.1, and never number a paragraph, list item, or hypothesis with a chapter.section number.',
+    'A chapter has 4 to 8 sections. Do not create more.',
     'Never write a REFERENCES list inside a chapter — cite in-text only; the document’s references section is composed separately.',
     'Never write a table of contents, title page, or preliminary pages — the app composes those.',
     'Formal, objective, technical register. No dramatic or sensational language.',
@@ -96,7 +100,8 @@ export function chapterPrompt(
   chapters: Chapter[],
   chapter: Chapter,
   nudge?: string,
-  continuation?: string
+  continuation?: string,
+  referencePool: PoolEntry[] = []
 ): string {
   const track = trackFor(project.track, project.courseOfStudy, project.fieldOfStudy)
   const preset: LengthPreset = project.lengthPreset ?? 'standard'
@@ -122,6 +127,18 @@ export function chapterPrompt(
     `Sections required in this chapter:`,
     sections,
   ]
+  if (referencePool.length) {
+    parts.push(
+      '',
+      'ALLOWED SOURCES — the only works you may cite. Use the exact (Author, Year) key shown at the start of each line:',
+      ...referencePool.map((r) => `${r.key} — ${r.authors} (${r.year}). ${r.title}.${r.container ? ` ${r.container}.` : ''}`)
+    )
+  } else {
+    parts.push(
+      '',
+      'No verified source pool is available for this project. Write the chapter WITHOUT in-text citations — do not invent any.',
+    )
+  }
   if (chapter.number === 4) parts.push('', `RESULTS INTEGRITY: ${track.chapter4Steering}`)
   if (nudge) parts.push(`\nDirection for this generation: ${nudge}`)
   if (continuation)
@@ -236,26 +253,8 @@ Respond with ONLY a JSON object in a fenced json code block, no other prose, in 
 }
 
 // ---------------------------------------------------------------------------
-// References — turn extracted citation keys into structured entries
+// References — retired recall-based flow. The reference list is now composed
+// deterministically at export from the Crossref-verified pool entries that the
+// chapters actually cited (see Export.ensureReferences); the model is never
+// asked to recall bibliographies from memory.
 // ---------------------------------------------------------------------------
-
-export function referencesPrompt(project: ProjectInfo, keys: string[]): string {
-  return `Produce full bibliographic details for every citation used in this final year project.
-
-Topic: ${project.topic}
-
-Citation keys found in the chapters (author, year):
-${keys.map((k) => `- ${k}`).join('\n')}
-
-Rules:
-- Use ONLY real published works you are genuinely certain about; never invent authors, years, journals, volumes, or DOIs — an empty field is always better than a fake one.
-- Join multiple authors with " & " like: Family, F. & Family, F.
-- If you cannot identify a real work for a key, omit that key from the response entirely.
-- "container" is the journal or book title; leave it empty for standalone works.
-
-Respond with ONLY a JSON object in a fenced json code block, no other prose, in this exact shape:
-
-\`\`\`json
-{ "entries": [ { "key": "Author, 2020", "authors": "Family, F. & Family, F.", "year": "2020", "title": "Full article or book title", "container": "Journal Name", "volume": "8", "issue": "2", "pages": "139-182", "doi": "" } ] }
-\`\`\``
-}

@@ -38,3 +38,6 @@ docs/test run/
 # --- OS cruft ---
 .DS_Store
 Thumbs.db
+
+# --- Playwright MCP browser artifacts ---
+.playwright-mcp/

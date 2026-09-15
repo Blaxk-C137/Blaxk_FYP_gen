@@ -86,6 +86,27 @@ function toFigureFromChart(raw: string): Block {
   return { kind: 'figure', description: description || 'chart (malformed data — regenerate this chapter)' }
 }
 
+/** Tolerant chart-spec parse for model output: requires a non-empty numeric
+ *  `data` object; defaults `type` to bar; accepts multi-line JSON. Null when
+ *  the content is not chart-shaped — callers then degrade to a placeholder. */
+export function parseChartSpec(raw: string): ChartSpec | null {
+  let j: unknown
+  try { j = JSON.parse(raw) } catch { return null }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return null
+  const o = j as Record<string, unknown>
+  if (!o.data || typeof o.data !== 'object' || Array.isArray(o.data)) return null
+  const data = o.data as Record<string, unknown>
+  const values = Object.values(data)
+  if (!values.length || !values.every((v) => typeof v === 'number' && Number.isFinite(v))) return null
+  const type = o.type === 'pie' || o.type === 'line' ? o.type : 'bar'
+  return {
+    type,
+    title: typeof o.title === 'string' ? o.title : undefined,
+    ylabel: typeof o.ylabel === 'string' ? o.ylabel : undefined,
+    data: data as Record<string, number>,
+  }
+}
+
 /**
  * Parses chapter text into blocks. Headings keep their raw text; fenced
  * chart/figure blocks are extracted; pipe tables and lists are structured;
@@ -112,17 +133,13 @@ export function parseBlocks(text: string): Block[] {
     if (fence) {
       if (/^```\s*$/.test(t)) {
         const raw = fence.lines.join('\n').trim()
-        if (fence.tag === 'chart') {
-          try {
-            const parsed = JSON.parse(raw) as ChartSpec
-            if (parsed && typeof parsed === 'object' && parsed.data && typeof parsed.data === 'object') {
-              blocks.push({ kind: 'chart', chart: parsed })
-            } else {
-              blocks.push(toFigureFromChart(raw))
-            }
-          } catch {
-            blocks.push(toFigureFromChart(raw))
-          }
+        // Charts arrive in `chart` fences — but the model often mislabels
+        // them `json`; chart-shaped content in either tag becomes a chart.
+        // Anything else degrades to a visible placeholder, never raw JSON.
+        if (fence.tag === 'chart' || /^json$/i.test(fence.tag)) {
+          const spec = parseChartSpec(raw)
+          if (spec) blocks.push({ kind: 'chart', chart: spec })
+          else blocks.push(toFigureFromChart(raw))
         } else if (fence.tag === 'figure') {
           blocks.push({ kind: 'figure', description: raw.replace(/\s+/g, ' ').slice(0, 300) })
         } else {
@@ -145,6 +162,17 @@ export function parseBlocks(text: string): Block[] {
     if (!t) {
       flushPara()
       continue
+    }
+
+    // ---- bare chart JSON (the model sometimes skips the fence) --------
+    if (/^\{.*\}$/.test(t)) {
+      const spec = parseChartSpec(t)
+      if (spec) {
+        flushPara()
+        blocks.push({ kind: 'chart', chart: spec })
+        continue
+      }
+      // Not chart-shaped: falls through to the paragraph below.
     }
 
     // ---- headings -----------------------------------------------------

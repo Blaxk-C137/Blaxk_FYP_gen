@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseBlocks, parseInline } from './markdown'
+import { parseBlocks, parseInline, parseChartSpec } from './markdown'
 
 describe('parseInline', () => {
   it('splits bold and italic markers into runs', () => {
@@ -120,8 +120,47 @@ describe('parseBlocks', () => {
     expect(blocks).toEqual([{ kind: 'para', runs: [{ text: 'some code' }] }])
   })
 
+  it('promotes a chart-shaped ```json fence to a chart block (model often mislabels the fence)', () => {
+    const blocks = parseBlocks('```json\n{"type":"bar","title":"Latency","data":{"A":1,"B":2}}\n```')
+    expect(blocks).toEqual([
+      { kind: 'chart', chart: { type: 'bar', title: 'Latency', data: { A: 1, B: 2 } } },
+    ])
+  })
+
+  it('a non-chart ```json fence degrades to a figure placeholder, never raw JSON', () => {
+    const blocks = parseBlocks('```json\n{"message":"hello"}\n```')
+    expect(blocks[0].kind).toBe('figure')
+    // No JSON syntax may leak into the placeholder description.
+    expect((blocks[0] as { description: string }).description).not.toMatch(/[{"]/)
+  })
+
+  it('promotes a bare single-line chart JSON object', () => {
+    const blocks = parseBlocks('Body.\n{"type":"pie","title":"Share","data":{"X":3,"Y":4}}\nMore.')
+    expect(blocks).toEqual([
+      { kind: 'para', runs: [{ text: 'Body.' }] },
+      { kind: 'chart', chart: { type: 'pie', title: 'Share', data: { X: 3, Y: 4 } } },
+      { kind: 'para', runs: [{ text: 'More.' }] },
+    ])
+  })
+
   it('recognizes an appendix heading', () => {
     const blocks = parseBlocks('APPENDIX: QUESTIONNAIRE\nSection A')
     expect(blocks[0]).toEqual({ kind: 'chapter', text: 'APPENDIX: QUESTIONNAIRE' })
+  })
+})
+
+describe('parseChartSpec', () => {
+  it('requires a non-empty numeric data object', () => {
+    expect(parseChartSpec('{"type":"bar","data":{}}')).toBeNull()
+    expect(parseChartSpec('{"type":"bar","data":{"A":"x"}}')).toBeNull()
+    expect(parseChartSpec('not json')).toBeNull()
+    expect(parseChartSpec('{"data":{"A":1}}')).not.toBeNull()
+  })
+
+  it('defaults type to bar and keeps optional title/ylabel', () => {
+    expect(parseChartSpec('{"data":{"A":1}}')).toEqual({ type: 'bar', data: { A: 1 } })
+    expect(parseChartSpec('{"type":"pie","title":"T","ylabel":"Y","data":{"A":1}}')).toEqual({
+      type: 'pie', title: 'T', ylabel: 'Y', data: { A: 1 },
+    })
   })
 })
