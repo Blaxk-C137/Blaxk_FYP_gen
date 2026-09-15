@@ -6,6 +6,7 @@ import { Export } from './Export'
 import { useAppStore, EMPTY_PROJECT, initialChapterState } from '../state/store'
 
 vi.mock('../api', () => ({ generateStream: vi.fn(), resolveReferences: vi.fn(), fetchLogo: vi.fn(), generateImage: vi.fn() }))
+vi.mock('../ai/pollinationsImages', () => ({ pollinationsImage: vi.fn().mockResolvedValue(null) }))
 vi.mock('../export/download', () => ({ downloadBlob: vi.fn() }))
 vi.mock('../export/docx', async (orig) => ({
   ...(await orig<typeof import('../export/docx')>()),

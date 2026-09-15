@@ -60,12 +60,19 @@ async function toBase64(result: unknown): Promise<string | null> {
 
 export async function puterImage(prompt: string): Promise<string | null> {
   try {
-    if (!puterAvailable()) return null
+    if (!puterAvailable()) {
+      console.warn('[fypgen] Puter images unavailable: script not loaded or blocked')
+      return null
+    }
     const result = await window.puter!.ai!.txt2img(prompt)
-    return await toBase64(result)
-  } catch {
-    // Absent/blocked script, cancelled sign-in, generation failure — images
-    // are optional, so every failure degrades to the fallback path.
+    const base64 = await toBase64(result)
+    if (!base64) console.warn('[fypgen] Puter returned an image we could not normalize')
+    return base64
+  } catch (err) {
+    // Cancelled sign-in, quota, generation failure — images are optional, so
+    // every failure degrades to the fallback path. Log it so the student can
+    // see why (e.g. a dismissed sign-in popup) instead of silent no-images.
+    console.warn('[fypgen] Puter image generation failed:', err)
     return null
   }
 }

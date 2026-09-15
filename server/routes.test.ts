@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { registerAIRoutes } from './routes.js'
 import { gemini } from './providers/gemini.js'
 import * as citations from './citations.js'
+import * as freeImage from './freeImage.js'
 
 vi.spyOn(gemini, 'testKey').mockResolvedValue({ ok: true })
 vi.spyOn(gemini, 'stream').mockImplementation(async function* () {
@@ -158,6 +159,40 @@ describe('POST /api/generate-image', () => {
     })
     expect(res.status).toBe(502)
     expect((await res.json()).error).toBe('safety block')
+  })
+})
+
+describe('POST /api/generate-image-free', () => {
+  it('proxies the prompt to Pollinations and returns base64', async () => {
+    const spy = vi.spyOn(freeImage, 'freeImage').mockResolvedValueOnce('aGk=')
+    const res = await app().request('/api/generate-image-free', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'a diagram' }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ base64: 'aGk=' })
+    expect(spy).toHaveBeenCalledWith('a diagram')
+  })
+
+  it('400 when the prompt is missing', async () => {
+    const res = await app().request('/api/generate-image-free', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('failure becomes 502 — the client falls back, never crashes', async () => {
+    vi.spyOn(freeImage, 'freeImage').mockRejectedValueOnce(new Error('Pollinations down'))
+    const res = await app().request('/api/generate-image-free', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'x' }),
+    })
+    expect(res.status).toBe(502)
+    expect((await res.json()).error).toBe('Pollinations down')
   })
 })
 

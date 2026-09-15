@@ -5,6 +5,7 @@ import { PROVIDERS } from '../shared/constants.js'
 import type { ProviderId } from '../shared/constants.js'
 import { configureNetworking, describeNetworkError, hasNetworkCause, logNetworkError } from './net.js'
 import { findUniversityLogo } from './logo.js'
+import { freeImage } from './freeImage.js'
 import { resolveCitations, searchReferencePool } from './citations.js'
 import type { ReferenceInput } from '../shared/constants.js'
 
@@ -130,6 +131,20 @@ export function registerAIRoutes(app: Hono) {
       logNetworkError('/api/generate-image', provider.id, err)
       return c.json(
         { error: hasNetworkCause(err) ? networkError(provider.id, err) : err instanceof Error ? err.message : 'Image generation failed' },
+        502
+      )
+    }
+  })
+
+  app.post('/api/generate-image-free', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { prompt?: string }
+    if (!body.prompt) return c.json({ error: 'Missing prompt' }, 400)
+    try {
+      return c.json({ base64: await freeImage(body.prompt) })
+    } catch (err) {
+      logNetworkError('/api/generate-image-free', 'pollinations', err)
+      return c.json(
+        { error: hasNetworkCause(err) ? networkError('pollinations', err) : err instanceof Error ? err.message : 'Image generation failed' },
         502
       )
     }

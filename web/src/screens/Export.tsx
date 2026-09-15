@@ -8,6 +8,7 @@ import { parseSlides } from '../ai/parseSlides'
 import type { SlideContent, SlideKey } from '../ai/parseSlides'
 import { extractCitations } from '../ai/extractCitations'
 import { puterImage } from '../ai/puterImages'
+import { pollinationsImage } from '../ai/pollinationsImages'
 import { buildDocx } from '../export/docx'
 import { buildPptx, slideContentFromChapters } from '../export/pptx'
 import { THEME_OPTIONS } from '../export/themes'
@@ -44,9 +45,10 @@ export function Export() {
   const [error, setError] = useState('')
   const [pptxFailed, setPptxFailed] = useState(false)
 
-  /** Free Puter image first; the API-key path is the fallback. */
+  /** Free images first — Puter (user's own credits), then keyless
+   *  Pollinations; the API-key path is the paid last resort. */
   const imageChain = async (prompt: string): Promise<string | null> =>
-    (await puterImage(prompt)) ?? (await generateImage(settings, prompt))
+    (await puterImage(prompt)) ?? (await pollinationsImage(prompt)) ?? (await generateImage(settings, prompt))
 
   async function docx() {
     setBusy('docx')
